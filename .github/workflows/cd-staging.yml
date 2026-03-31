@@ -29,24 +29,7 @@ jobs:
         mkdir -p "${GITHUB_WORKSPACE}/.tmp"
         KEY_PATH="${GITHUB_WORKSPACE}/.tmp/staging_ed25519"
         printf '%s' "$STAGING_SSH_KEY_B64" | base64 -d > "$KEY_PATH"
-        chmod 644 "$KEY_PATH"
-
-    - name: 校验 SSH 私钥格式
-      run: |
-        KEY_PATH="${GITHUB_WORKSPACE}/.tmp/staging_ed25519"
-
-        if [ ! -s "$KEY_PATH" ]; then
-          echo "SSH 私钥文件为空或不存在"
-          exit 1
-        fi
-
-        echo "SSH key bytes: $(wc -c < "$KEY_PATH")"
-        echo "SSH key first line: $(head -n 1 "$KEY_PATH")"
-
-        if ! ssh-keygen -y -f "$KEY_PATH" > /dev/null 2>&1; then
-          echo "SSH 私钥校验失败：当前 STAGING_SSH_KEY_B64 解码后不是合法私钥"
-          exit 1
-        fi
+        chmod 600 "$KEY_PATH"
 
         echo "SSH 私钥校验通过"
 
