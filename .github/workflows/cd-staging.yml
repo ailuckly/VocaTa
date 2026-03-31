@@ -15,8 +15,6 @@ concurrency:
 jobs:
   deploy-staging:
     runs-on: ubuntu-latest
-    environment:
-      name: staging
 
     steps:
     - name: 准备 SSH 私钥文件

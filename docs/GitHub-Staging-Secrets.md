@@ -8,7 +8,9 @@
 
 ## 必填 Secrets
 
-现在的简化版 staging workflow 只需要 3 个 secrets：
+现在的 staging workflow 只使用仓库级 `Repository secrets`，不再依赖 `Environments -> staging`。
+
+只需要 3 个 secrets：
 
 - `STAGING_HOST`
 - `STAGING_USER`
