@@ -34,13 +34,10 @@ jobs:
           server:
             - 'vocata-server/**'
             - 'pom.xml'
-            - '.github/workflows/**'
           web:
             - 'vocata-web/**'
-            - '.github/workflows/**'
           admin:
             - 'vocata-admin/**'
-            - '.github/workflows/**'
 
   # 后端服务CI
   backend-ci:
