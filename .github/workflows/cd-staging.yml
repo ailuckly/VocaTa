@@ -28,9 +28,10 @@ jobs:
           exit 1
         fi
 
-        KEY_PATH="${RUNNER_TEMP}/staging_ed25519"
+        mkdir -p "${GITHUB_WORKSPACE}/.tmp"
+        KEY_PATH="${GITHUB_WORKSPACE}/.tmp/staging_ed25519"
         printf '%s' "$STAGING_SSH_KEY_B64" | base64 -d > "$KEY_PATH"
-        chmod 600 "$KEY_PATH"
+        chmod 644 "$KEY_PATH"
 
     - name: 部署到服务器
       uses: appleboy/ssh-action@v1.0.3
@@ -42,7 +43,7 @@ jobs:
       with:
         host: ${{ secrets.STAGING_HOST }}
         username: ${{ secrets.STAGING_USER }}
-        key_path: ${{ runner.temp }}/staging_ed25519
+        key_path: /github/workspace/.tmp/staging_ed25519
         port: 22
         script_stop: true
         envs: GIT_REF,GIT_SHA,GITHUB_REPOSITORY,GITHUB_TOKEN
@@ -96,7 +97,7 @@ jobs:
       with:
         host: ${{ secrets.STAGING_HOST }}
         username: ${{ secrets.STAGING_USER }}
-        key_path: ${{ runner.temp }}/staging_ed25519
+        key_path: /github/workspace/.tmp/staging_ed25519
         port: 22
         script_stop: false
         script: |
