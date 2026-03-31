@@ -17,22 +17,6 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: 准备 SSH 私钥文件
-      env:
-        STAGING_SSH_KEY_B64: ${{ secrets.STAGING_SSH_KEY_B64 }}
-      run: |
-        if [ -z "$STAGING_SSH_KEY_B64" ]; then
-          echo "缺少 STAGING_SSH_KEY_B64 secret"
-          exit 1
-        fi
-
-        mkdir -p "${GITHUB_WORKSPACE}/.tmp"
-        KEY_PATH="${GITHUB_WORKSPACE}/.tmp/staging_ed25519"
-        printf '%s' "$STAGING_SSH_KEY_B64" | base64 -d > "$KEY_PATH"
-        chmod 600 "$KEY_PATH"
-
-        echo "SSH 私钥校验通过"
-
     - name: 部署到服务器
       uses: appleboy/ssh-action@v1.0.3
       env:
@@ -43,7 +27,7 @@ jobs:
       with:
         host: ${{ secrets.STAGING_HOST }}
         username: ${{ secrets.STAGING_USER }}
-        key_path: /github/workspace/.tmp/staging_ed25519
+        key: ${{ secrets.STAGING_SSH_KEY }}
         port: 22
         script_stop: true
         envs: GIT_REF,GIT_SHA,GITHUB_REPOSITORY,GITHUB_TOKEN
@@ -97,7 +81,7 @@ jobs:
       with:
         host: ${{ secrets.STAGING_HOST }}
         username: ${{ secrets.STAGING_USER }}
-        key_path: /github/workspace/.tmp/staging_ed25519
+        key: ${{ secrets.STAGING_SSH_KEY }}
         port: 22
         script_stop: false
         script: |

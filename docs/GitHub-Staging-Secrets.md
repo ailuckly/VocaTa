@@ -14,9 +14,9 @@
 
 - `STAGING_HOST`
 - `STAGING_USER`
-- `STAGING_SSH_KEY_B64`
+- `STAGING_SSH_KEY`
 
-## STAGING_SSH_KEY_B64 来源
+## STAGING_SSH_KEY 来源
 
 当前为 GitHub Actions 生成的 staging deploy key 私钥保存在本机：
 
@@ -30,13 +30,11 @@
 
 - `/home/deploy/.ssh/authorized_keys`
 
-不要直接粘贴多行私钥，先在本机转成 base64：
+直接把这份私钥文件的完整内容复制到 GitHub Secret `STAGING_SSH_KEY`：
 
 ```bash
-base64 -w 0 /home/an/Projects/goodPro/VocaTa/.local/vocata_staging_ed25519
+cat /home/an/Projects/goodPro/VocaTa/.local/vocata_staging_ed25519
 ```
-
-把输出的整行内容复制到 GitHub Secret `STAGING_SSH_KEY_B64`。
 
 ## 当前服务器登录建议
 
