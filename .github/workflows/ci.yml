@@ -44,6 +44,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: detect-changes
     if: needs.detect-changes.outputs.server-changed == 'true'
+    outputs:
+      test-status: ${{ steps.backend_test.outcome }}
     defaults:
       run:
         working-directory: ./vocata-server
@@ -61,19 +63,17 @@ jobs:
     - name: 缓存 Maven 依赖
       uses: actions/cache@v4
       with:
-        path: ~/.m2
+        path: /tmp/juhao_m2repo
         key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
         restore-keys: ${{ runner.os }}-m2
 
-    - name: 编译项目
-      run: mvn clean compile -DskipTests
+    - name: 构建后端基线包
+      run: mvn -Dmaven.repo.local=/tmp/juhao_m2repo -Dmaven.test.skip=true package
 
-    - name: 运行单元测试
-      run: mvn test
+    - name: 探测后端测试现状
+      id: backend_test
+      run: mvn -Dmaven.repo.local=/tmp/juhao_m2repo test
       continue-on-error: true
-
-    - name: 构建 JAR 包
-      run: mvn package -DskipTests
 
   # 前端客户端CI
   frontend-web-ci:
@@ -98,13 +98,14 @@ jobs:
     - name: 安装依赖
       run: npm ci
 
-    - name: 代码检查
-      run: |
-        npm run lint
-        npm run type-check
+    - name: 运行代码检查
+      run: npx eslint .
+
+    - name: 运行类型检查
+      run: npm run type-check
 
     - name: 构建应用
-      run: npm run build:test
+      run: npm run build
 
   # 管理后台CI
   frontend-admin-ci:
@@ -129,13 +130,14 @@ jobs:
     - name: 安装依赖
       run: npm ci
 
-    - name: 代码检查
-      run: |
-        npm run lint
-        npm run type-check
+    - name: 运行代码检查
+      run: npx eslint .
+
+    - name: 运行类型检查
+      run: npm run type-check
 
     - name: 构建应用
-      run: npm run build:test
+      run: npm run build
 
   # CI 结果汇总
   ci-summary:
@@ -157,7 +159,11 @@ jobs:
         # 后端服务
         if [[ "${{ needs.detect-changes.outputs.server-changed }}" == "true" ]]; then
           if [[ "${{ needs.backend-ci.result }}" == "success" ]]; then
-            echo "| 后端服务 | 有变更 | ✅ 通过 |" >> $GITHUB_STEP_SUMMARY
+            if [[ "${{ needs.backend-ci.outputs.test-status }}" == "failure" ]]; then
+              echo "| 后端服务 | 有变更 | ⚠️ 基线通过，测试现状失败 |" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "| 后端服务 | 有变更 | ✅ 通过 |" >> $GITHUB_STEP_SUMMARY
+            fi
           else
             echo "| 后端服务 | 有变更 | ❌ 失败 |" >> $GITHUB_STEP_SUMMARY
             FAILED=true
