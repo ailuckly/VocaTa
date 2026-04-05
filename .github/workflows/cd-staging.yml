@@ -23,14 +23,13 @@ jobs:
         GIT_REF: ${{ github.ref_name }}
         GIT_SHA: ${{ github.sha }}
         GITHUB_REPOSITORY: ${{ github.repository }}
-        GITHUB_TOKEN: ${{ github.token }}
       with:
         host: ${{ secrets.STAGING_HOST }}
         username: ${{ secrets.STAGING_USER }}
         key: ${{ secrets.STAGING_SSH_KEY }}
         port: 22
         script_stop: true
-        envs: GIT_REF,GIT_SHA,GITHUB_REPOSITORY,GITHUB_TOKEN
+        envs: GIT_REF,GIT_SHA,GITHUB_REPOSITORY
         script: |
           set -e
 
@@ -38,7 +37,7 @@ jobs:
           REPO_DIR=$APP_DIR/repo
           ENV_FILE=$APP_DIR/.env
           LEGACY_ENV_FILE=$APP_DIR/data/vocata-staging.env
-          REPO_URL="https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          REPO_URL="https://github.com/${GITHUB_REPOSITORY}.git"
 
           mkdir -p "$APP_DIR"
 
@@ -53,9 +52,11 @@ jobs:
           fi
 
           if [ ! -d "$REPO_DIR/.git" ]; then
+            echo "[1/4] clone fresh repository"
             rm -rf "$REPO_DIR"
             git clone --branch "$GIT_REF" --depth 1 "$REPO_URL" "$REPO_DIR"
           else
+            echo "[1/4] update repository"
             cd "$REPO_DIR"
             git remote set-url origin "$REPO_URL"
             git fetch --depth 1 origin "$GIT_REF"
@@ -66,12 +67,15 @@ jobs:
           cd "$REPO_DIR"
           git remote set-url origin "https://github.com/${GITHUB_REPOSITORY}.git"
 
+          echo "[2/4] deploy compose stack"
           echo "当前提交: $GIT_SHA"
           docker compose --env-file "$ENV_FILE" up -d --build --wait
 
+          echo "[3/4] inspect compose status"
           echo "=== 容器状态 ==="
           docker compose --env-file "$ENV_FILE" ps
 
+          echo "[4/4] check backend health"
           echo "=== 后端健康检查 ==="
           curl -fsS http://127.0.0.1:9009/api/health
 
