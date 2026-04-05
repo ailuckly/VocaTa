@@ -19,25 +19,24 @@ jobs:
     steps:
     - name: 部署到服务器
       uses: appleboy/ssh-action@v1.0.3
-      env:
-        GIT_REF: ${{ github.ref_name }}
-        GIT_SHA: ${{ github.sha }}
-        GITHUB_REPOSITORY: ${{ github.repository }}
       with:
         host: ${{ secrets.STAGING_HOST }}
         username: ${{ secrets.STAGING_USER }}
         key: ${{ secrets.STAGING_SSH_KEY }}
         port: 22
         script_stop: true
-        envs: GIT_REF,GIT_SHA,GITHUB_REPOSITORY
         script: |
+          exec 2>&1
           set -e
 
           APP_DIR=/home/deploy/deploy/vocata
           REPO_DIR=$APP_DIR/repo
           ENV_FILE=$APP_DIR/.env
           LEGACY_ENV_FILE=$APP_DIR/data/vocata-staging.env
-          REPO_URL="https://github.com/${GITHUB_REPOSITORY}.git"
+          GIT_REF="${{ github.ref_name }}"
+          GIT_SHA="${{ github.sha }}"
+          REPOSITORY="${{ github.repository }}"
+          REPO_URL="https://github.com/${{ github.repository }}.git"
 
           mkdir -p "$APP_DIR"
 
@@ -65,7 +64,7 @@ jobs:
           fi
 
           cd "$REPO_DIR"
-          git remote set-url origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git remote set-url origin "$REPO_URL"
 
           echo "[2/4] deploy compose stack"
           echo "当前提交: $GIT_SHA"
