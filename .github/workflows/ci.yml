@@ -44,8 +44,6 @@ jobs:
     runs-on: ubuntu-latest
     needs: detect-changes
     if: needs.detect-changes.outputs.server-changed == 'true'
-    outputs:
-      test-status: ${{ steps.backend_test.outcome }}
     defaults:
       run:
         working-directory: ./vocata-server
@@ -70,10 +68,8 @@ jobs:
     - name: 构建后端基线包
       run: mvn -Dmaven.repo.local=/tmp/juhao_m2repo -Dmaven.test.skip=true package
 
-    - name: 探测后端测试现状
-      id: backend_test
+    - name: 运行后端 smoke tests
       run: mvn -Dmaven.repo.local=/tmp/juhao_m2repo test
-      continue-on-error: true
 
   # 前端客户端CI
   frontend-web-ci:
@@ -159,11 +155,7 @@ jobs:
         # 后端服务
         if [[ "${{ needs.detect-changes.outputs.server-changed }}" == "true" ]]; then
           if [[ "${{ needs.backend-ci.result }}" == "success" ]]; then
-            if [[ "${{ needs.backend-ci.outputs.test-status }}" == "failure" ]]; then
-              echo "| 后端服务 | 有变更 | ⚠️ 基线通过，测试现状失败 |" >> $GITHUB_STEP_SUMMARY
-            else
-              echo "| 后端服务 | 有变更 | ✅ 通过 |" >> $GITHUB_STEP_SUMMARY
-            fi
+            echo "| 后端服务 | 有变更 | ✅ 通过 |" >> $GITHUB_STEP_SUMMARY
           else
             echo "| 后端服务 | 有变更 | ❌ 失败 |" >> $GITHUB_STEP_SUMMARY
             FAILED=true
