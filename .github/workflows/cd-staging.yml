@@ -67,10 +67,10 @@ jobs:
           git remote set-url origin "https://github.com/${GITHUB_REPOSITORY}.git"
 
           echo "当前提交: $GIT_SHA"
-          docker compose --env-file "$ENV_FILE" up -d --build
+          docker compose --env-file "$ENV_FILE" up -d --build --wait
 
           echo "=== 容器状态 ==="
-          docker compose ps
+          docker compose --env-file "$ENV_FILE" ps
 
           echo "=== 后端健康检查 ==="
           curl -fsS http://127.0.0.1:9009/api/health
@@ -87,17 +87,18 @@ jobs:
         script: |
           APP_DIR=/home/deploy/deploy/vocata
           REPO_DIR=$APP_DIR/repo
+          ENV_FILE=$APP_DIR/.env
 
           if [ -d "$REPO_DIR" ]; then
             cd "$REPO_DIR"
             echo "=== docker compose ps ==="
-            docker compose ps || true
+            docker compose --env-file "$ENV_FILE" ps || true
             echo "=== vocata-server logs ==="
-            docker compose logs --tail=100 vocata-server || true
+            docker compose --env-file "$ENV_FILE" logs --tail=100 vocata-server || true
             echo "=== vocata-web logs ==="
-            docker compose logs --tail=60 vocata-web || true
+            docker compose --env-file "$ENV_FILE" logs --tail=60 vocata-web || true
             echo "=== vocata-admin logs ==="
-            docker compose logs --tail=60 vocata-admin || true
+            docker compose --env-file "$ENV_FILE" logs --tail=60 vocata-admin || true
           fi
 
     - name: 部署结果报告
