@@ -17,92 +17,89 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+    - name: 准备 SSH 密钥
+      run: |
+        install -m 600 /dev/null "$RUNNER_TEMP/staging_key"
+        printf '%s\n' '${{ secrets.STAGING_SSH_KEY }}' > "$RUNNER_TEMP/staging_key"
+
     - name: 部署到服务器
-      uses: appleboy/ssh-action@v1.0.3
-      with:
-        host: ${{ secrets.STAGING_HOST }}
-        username: ${{ secrets.STAGING_USER }}
-        key: ${{ secrets.STAGING_SSH_KEY }}
-        port: 22
-        script_stop: true
-        script: |
-          exec 2>&1
-          set -e
+      run: |
+        ssh -i "$RUNNER_TEMP/staging_key" \
+          -o StrictHostKeyChecking=no \
+          -o UserKnownHostsFile=/dev/null \
+          ${{ secrets.STAGING_USER }}@${{ secrets.STAGING_HOST }} <<'EOF'
+        set -e
 
-          APP_DIR=/home/deploy/deploy/vocata
-          REPO_DIR=$APP_DIR/repo
-          ENV_FILE=$APP_DIR/.env
-          LEGACY_ENV_FILE=$APP_DIR/data/vocata-staging.env
-          GIT_REF="${{ github.ref_name }}"
-          GIT_SHA="${{ github.sha }}"
-          REPOSITORY="${{ github.repository }}"
-          REPO_URL="https://github.com/${{ github.repository }}.git"
+        APP_DIR=/home/deploy/deploy/vocata
+        REPO_DIR=$APP_DIR/repo
+        ENV_FILE=$APP_DIR/.env
+        LEGACY_ENV_FILE=$APP_DIR/data/vocata-staging.env
+        GIT_REF="${{ github.ref_name }}"
+        GIT_SHA="${{ github.sha }}"
+        REPO_URL="https://github.com/${{ github.repository }}.git"
 
-          mkdir -p "$APP_DIR"
+        mkdir -p "$APP_DIR"
 
-          if [ ! -f "$ENV_FILE" ] && [ -f "$LEGACY_ENV_FILE" ]; then
-            cp "$LEGACY_ENV_FILE" "$ENV_FILE"
-          fi
+        if [ ! -f "$ENV_FILE" ] && [ -f "$LEGACY_ENV_FILE" ]; then
+          cp "$LEGACY_ENV_FILE" "$ENV_FILE"
+        fi
 
-          if [ ! -f "$ENV_FILE" ]; then
-            echo "缺少部署环境文件: $ENV_FILE"
-            echo "请先在服务器上准备好 .env，再重新执行工作流。"
-            exit 1
-          fi
+        if [ ! -f "$ENV_FILE" ]; then
+          echo "缺少部署环境文件: $ENV_FILE"
+          echo "请先在服务器上准备好 .env，再重新执行工作流。"
+          exit 1
+        fi
 
-          if [ ! -d "$REPO_DIR/.git" ]; then
-            echo "[1/4] clone fresh repository"
-            rm -rf "$REPO_DIR"
-            git clone --branch "$GIT_REF" --depth 1 "$REPO_URL" "$REPO_DIR"
-          else
-            echo "[1/4] update repository"
-            cd "$REPO_DIR"
-            git remote set-url origin "$REPO_URL"
-            git fetch --depth 1 origin "$GIT_REF"
-            git checkout "$GIT_REF"
-            git reset --hard "origin/$GIT_REF"
-          fi
-
+        if [ ! -d "$REPO_DIR/.git" ]; then
+          echo "[1/4] clone fresh repository"
+          rm -rf "$REPO_DIR"
+          git clone --branch "$GIT_REF" --depth 1 "$REPO_URL" "$REPO_DIR"
+        else
+          echo "[1/4] update repository"
           cd "$REPO_DIR"
           git remote set-url origin "$REPO_URL"
+          git fetch --depth 1 origin "$GIT_REF"
+          git checkout "$GIT_REF"
+          git reset --hard "origin/$GIT_REF"
+        fi
 
-          echo "[2/4] deploy compose stack"
-          echo "当前提交: $GIT_SHA"
-          docker compose --env-file "$ENV_FILE" up -d --build --wait
+        cd "$REPO_DIR"
+        git remote set-url origin "$REPO_URL"
 
-          echo "[3/4] inspect compose status"
-          echo "=== 容器状态 ==="
-          docker compose --env-file "$ENV_FILE" ps
+        echo "[2/4] deploy compose stack"
+        echo "当前提交: $GIT_SHA"
+        docker compose --env-file "$ENV_FILE" up -d --build --wait
 
-          echo "[4/4] check backend health"
-          echo "=== 后端健康检查 ==="
-          curl -fsS http://127.0.0.1:9009/api/health
+        echo "[3/4] inspect compose status"
+        docker compose --env-file "$ENV_FILE" ps
+
+        echo "[4/4] check backend health"
+        curl -fsS http://127.0.0.1:9009/api/health
+        EOF
 
     - name: 失败时输出日志
       if: failure()
-      uses: appleboy/ssh-action@v1.0.3
-      with:
-        host: ${{ secrets.STAGING_HOST }}
-        username: ${{ secrets.STAGING_USER }}
-        key: ${{ secrets.STAGING_SSH_KEY }}
-        port: 22
-        script_stop: false
-        script: |
-          APP_DIR=/home/deploy/deploy/vocata
-          REPO_DIR=$APP_DIR/repo
-          ENV_FILE=$APP_DIR/.env
+      run: |
+        ssh -i "$RUNNER_TEMP/staging_key" \
+          -o StrictHostKeyChecking=no \
+          -o UserKnownHostsFile=/dev/null \
+          ${{ secrets.STAGING_USER }}@${{ secrets.STAGING_HOST }} <<'EOF'
+        APP_DIR=/home/deploy/deploy/vocata
+        REPO_DIR=$APP_DIR/repo
+        ENV_FILE=$APP_DIR/.env
 
-          if [ -d "$REPO_DIR" ]; then
-            cd "$REPO_DIR"
-            echo "=== docker compose ps ==="
-            docker compose --env-file "$ENV_FILE" ps || true
-            echo "=== vocata-server logs ==="
-            docker compose --env-file "$ENV_FILE" logs --tail=100 vocata-server || true
-            echo "=== vocata-web logs ==="
-            docker compose --env-file "$ENV_FILE" logs --tail=60 vocata-web || true
-            echo "=== vocata-admin logs ==="
-            docker compose --env-file "$ENV_FILE" logs --tail=60 vocata-admin || true
-          fi
+        if [ -d "$REPO_DIR" ]; then
+          cd "$REPO_DIR"
+          echo "=== docker compose ps ==="
+          docker compose --env-file "$ENV_FILE" ps || true
+          echo "=== vocata-server logs ==="
+          docker compose --env-file "$ENV_FILE" logs --tail=100 vocata-server || true
+          echo "=== vocata-web logs ==="
+          docker compose --env-file "$ENV_FILE" logs --tail=60 vocata-web || true
+          echo "=== vocata-admin logs ==="
+          docker compose --env-file "$ENV_FILE" logs --tail=60 vocata-admin || true
+        fi
+        EOF
 
     - name: 部署结果报告
       if: always()
