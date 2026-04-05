@@ -188,3 +188,7 @@ Desktop.ini
 !**/config.example.js
 
 /resources/application-local.yml
+
+# local workspace artifacts
+/.codex
+/test.sh
