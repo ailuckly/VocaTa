@@ -83,6 +83,7 @@ jobs:
         cache-dependency-path: vocata-web/package-lock.json
 
     - name: 安装依赖
+      working-directory: ./vocata-web
       run: npm ci
 
     - name: 运行用户端验证脚本
@@ -106,6 +107,7 @@ jobs:
         cache-dependency-path: vocata-admin/package-lock.json
 
     - name: 安装依赖
+      working-directory: ./vocata-admin
       run: npm ci
 
     - name: 运行管理端验证脚本
