@@ -22,7 +22,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * AI语音对话WebSocket处理器
  * 完整实现 STT -> LLM -> TTS 处理链路
  *
- * Protocol contract:
+ * Control/STT subset handled in this handler:
  * Client -> server
  * audio_start: initialize the current session stream context
  * binary audio frame: append one audio chunk to current session stream
@@ -34,6 +34,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * stt_result: incremental transcript, may be interim or final
  * status: connection / call lifecycle notices
  * error: protocol or processing failure
+ * pong: emitted in response to ping
  */
 @Component
 public class AiChatWebSocketHandler extends BinaryWebSocketHandler {

@@ -2,7 +2,7 @@
  * VocaTa AI对话系统 - WebSocket客户端和音频管理器
  * 基于文档 VocaTa-AI对话完整对接文档.md 实现
  *
- * Realtime voice protocol contract:
+ * Realtime voice control/STT subset:
  * - Client -> server:
  *   - audio_start: open a new voice stream session for incremental STT
  *   - binary audio frame: one audio chunk for the active session
@@ -43,7 +43,7 @@ export interface ServerSttMessage extends WebSocketMessage {
   timestamp: number
 }
 
-export interface ServerStatusMessage extends WebSocketMessage {
+interface ServerStatusMessage extends WebSocketMessage {
   type: 'status'
   message: string
   timestamp: number
