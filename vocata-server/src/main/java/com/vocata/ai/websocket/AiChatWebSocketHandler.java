@@ -21,6 +21,18 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * AI语音对话WebSocket处理器
  * 完整实现 STT -> LLM -> TTS 处理链路
+ *
+ * Protocol contract:
+ * Client -> server
+ * audio_start: create stream context and start incremental STT subscription
+ * binary audio frame: append one audio chunk to current session stream
+ * audio_end: complete current audio stream
+ * audio_cancel: abort current audio stream and discard partial session state
+ *
+ * Server -> client
+ * stt_result: incremental transcript, may be interim or final
+ * status: connection / call lifecycle notices
+ * error: protocol or processing failure
  */
 @Component
 public class AiChatWebSocketHandler extends BinaryWebSocketHandler {
@@ -86,7 +98,7 @@ public class AiChatWebSocketHandler extends BinaryWebSocketHandler {
 
         logger.info("🎵 接收音频数据: {} bytes", audioData.length);
 
-        // 将音频数据发送到对应的音频流
+        // binary audio frame: append one audio chunk to current session stream
         Sinks.Many<byte[]> audioSink = audioSinks.get(sessionId);
         if (audioSink != null) {
             audioSink.tryEmitNext(audioData);
@@ -105,6 +117,7 @@ public class AiChatWebSocketHandler extends BinaryWebSocketHandler {
             String type = (String) data.get("type");
             String sessionId = session.getId();
 
+            // Client -> server control messages are handled explicitly here.
             if ("audio_start".equals(type) || "audio_end".equals(type) || "audio_cancel".equals(type) || "ping".equals(type)) {
                 logger.debug("收到控制指令: {}, 会话ID: {}", type, sessionId);
             } else {
@@ -113,18 +126,22 @@ public class AiChatWebSocketHandler extends BinaryWebSocketHandler {
 
             switch (type) {
                 case "audio_start":
+                    // audio_start: create stream context and start incremental STT subscription
                     handleAudioStart(session);
                     break;
                 case "audio_end":
+                    // audio_end: complete current audio stream
                     handleAudioEnd(session, data);
                     break;
                 case "audio_cancel":
+                    // audio_cancel: abort current audio stream and discard partial session state
                     handleAudioCancel(session);
                     break;
                 case "text_message":
                     handleTextInput(session, data);
                     break;
                 case "ping":
+                    // ping: keepalive control message
                     sendPongMessage(session);
                     break;
                 default:

@@ -1,6 +1,18 @@
 /**
  * VocaTa AI对话系统 - WebSocket客户端和音频管理器
  * 基于文档 VocaTa-AI对话完整对接文档.md 实现
+ *
+ * Realtime voice protocol contract:
+ * - Client -> server:
+ *   - audio_start: open a new voice stream session for incremental STT
+ *   - binary audio frame: one audio chunk for the active session
+ *   - audio_end: finish the current audio stream
+ *   - audio_cancel: abort the current audio stream and discard partial state
+ *   - ping: keepalive control message
+ * - Server -> client:
+ *   - stt_result: incremental transcript update
+ *   - status: lifecycle notice
+ *   - error: protocol or processing failure
  */
 
 import { getToken } from './token'
@@ -17,11 +29,29 @@ export interface WebSocketMessage {
   [key: string]: unknown
 }
 
-interface STTResultMessage extends WebSocketMessage {
+export type ClientControlMessage =
+  | { type: 'audio_start'; format: string; mimeType?: string; sampleRate?: number }
+  | { type: 'audio_end' }
+  | { type: 'audio_cancel' }
+  | { type: 'ping' }
+
+export interface ServerSttMessage extends WebSocketMessage {
   type: 'stt_result'
   text: string
   isFinal: boolean
   confidence: number
+  timestamp: number
+}
+
+export interface ServerStatusMessage extends WebSocketMessage {
+  type: 'status'
+  message: string
+  timestamp: number
+}
+
+export interface ServerErrorMessage extends WebSocketMessage {
+  type: 'error'
+  error: string
   timestamp: number
 }
 
@@ -55,12 +85,6 @@ interface TTSResultMessage extends WebSocketMessage {
 interface CompleteMessage extends WebSocketMessage {
   type: 'complete'
   message: string
-  timestamp: number
-}
-
-interface ErrorMessage extends WebSocketMessage {
-  type: 'error'
-  error: string
   timestamp: number
 }
 
@@ -186,30 +210,33 @@ export class VocaTaWebSocketClient {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       return
     }
+    // Binary audio frame: one chunk for the current active voice session.
     this.ws.send(audioBuffer)
   }
 
   // 音频录制控制
   startAudioRecording(): void {
-    this.sendControlMessage('audio_start')
+    this.sendControlMessage({
+      type: 'audio_start',
+      format: 'mediarecorder'
+    })
   }
 
   stopAudioRecording(): void {
-    this.sendControlMessage('audio_end')
+    this.sendControlMessage({ type: 'audio_end' })
   }
 
-  sendControlMessage(type: string, payload: Record<string, unknown> = {}): void {
+  sendControlMessage(message: ClientControlMessage): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       return
     }
-    const message = { type, ...payload }
     console.log(`📡 发送控制指令:`, message)
     this.ws.send(JSON.stringify(message))
   }
 
   // 发送心跳
   sendPing(): void {
-    this.sendControlMessage('ping')
+    this.sendControlMessage({ type: 'ping' })
   }
 
   // 事件监听器
@@ -795,7 +822,7 @@ export class VocaTaAIChat {
     this.onMessageCallback?.(message)
   }
 
-  private handleSTTResult(message: STTResultMessage): void {
+  private handleSTTResult(message: ServerSttMessage): void {
     console.log(`🎤 STT识别: ${message.text} (${message.isFinal ? '最终' : '临时'})`)
 
     this.currentSTTText = message.text
@@ -910,7 +937,7 @@ export class VocaTaAIChat {
     if (this.wsClient) {
       const client = this.wsClient
       if (client.isConnected) {
-        client.sendControlMessage('audio_cancel')
+        client.sendControlMessage({ type: 'audio_cancel' })
         setTimeout(() => {
           client.disconnect()
         }, 100)
