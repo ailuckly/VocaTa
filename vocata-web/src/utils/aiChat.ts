@@ -43,12 +43,6 @@ export interface ServerSttMessage extends WebSocketMessage {
   timestamp: number
 }
 
-interface ServerStatusMessage extends WebSocketMessage {
-  type: 'status'
-  message: string
-  timestamp: number
-}
-
 export interface ServerErrorMessage extends WebSocketMessage {
   type: 'error'
   error: string
@@ -291,7 +285,9 @@ export class VocaTaWebSocketClient {
   }
 }
 
-// 音频管理器类 - 批量录音模式
+const CHUNK_MS = 250
+
+// 音频管理器类 - 实时分块录音模式
 export class AudioManager {
   private audioContext: AudioContext | null = null
   private mediaRecorder: MediaRecorder | null = null
@@ -300,9 +296,8 @@ export class AudioManager {
   private isRecording = false
   private audioStream: MediaStream | null = null
 
-  // 批量录音模式 - 收集完整音频段
-  private recordedChunks: Blob[] = []
   private currentWsClient: VocaTaWebSocketClient | null = null
+  private pendingChunkSends: Set<Promise<void>> = new Set()
   private stopRecordingPromise: Promise<void> | null = null
   private stopRecordingResolve?: () => void
   private stopRecordingReject?: (reason?: unknown) => void
@@ -352,9 +347,9 @@ export class AudioManager {
 
   async startRecording(wsClient: VocaTaWebSocketClient): Promise<void> {
     try {
-      console.log('🎤 开始批量录音模式...')
+      console.log('🎤 开始实时分块录音模式...')
       this.currentWsClient = wsClient
-      this.recordedChunks = [] // 重置录音数据
+      this.pendingChunkSends = new Set()
       this.stopRecordingPromise = null
       this.stopRecordingResolve = undefined
       this.stopRecordingReject = undefined
@@ -406,7 +401,7 @@ export class AudioManager {
 
       console.log('🎵 使用音频格式:', mimeType || '默认格式')
 
-      // 创建MediaRecorder - 批量模式，不设置timeslice
+      // 创建MediaRecorder - 按固定间隔产出音频块
       const mediaRecorderOptions: MediaRecorderOptions = {}
       if (mimeType) {
         mediaRecorderOptions.mimeType = mimeType
@@ -414,23 +409,21 @@ export class AudioManager {
 
       this.mediaRecorder = new MediaRecorder(this.audioStream, mediaRecorderOptions)
 
-      // 批量录音 - 收集所有数据到chunks数组
       this.mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          console.log(`🎤 收集音频块: ${event.data.size} bytes`)
-          this.recordedChunks.push(event.data)
-        }
+        const sendPromise = this.handleAudioChunk(event)
+        this.pendingChunkSends.add(sendPromise)
+        sendPromise.finally(() => {
+          this.pendingChunkSends.delete(sendPromise)
+        })
       }
 
-      // 录音结束时发送完整音频
       this.mediaRecorder.onstop = () => {
-        this.handleMediaRecorderStop()
+        void this.handleMediaRecorderStop()
       }
 
-      // 开始录音（不设置timeslice，收集完整音频）
-      this.mediaRecorder.start()
+      this.mediaRecorder.start(CHUNK_MS)
       this.isRecording = true
-      console.log('✅ 开始批量录音 (手动控制模式)')
+      console.log(`✅ 开始实时分块录音 (${CHUNK_MS}ms/chunk)`)
 
     } catch (error) {
       console.error('❌ 录音启动失败:', error)
@@ -450,13 +443,9 @@ export class AudioManager {
 
         try {
           this.mediaRecorder!.stop()
-          if (this.audioStream) {
-            this.audioStream.getTracks().forEach(track => track.stop())
-          }
           this.isRecording = false
 
-          console.log('⏹️ 停止批量录音')
-          // 注意：不要在这里清理currentWsClient，因为processBatchAudio还需要使用它
+          console.log('⏹️ 停止实时分块录音，等待最后一个音频块刷新完成')
         } catch (error) {
           console.error('❌ 停止录音失败:', error)
           this.stopRecordingResolve = undefined
@@ -476,54 +465,53 @@ export class AudioManager {
     }
   }
 
-  // 处理批量录音音频数据
-  private async processBatchAudio(): Promise<void> {
+  private async handleAudioChunk(event: BlobEvent): Promise<void> {
     try {
-      if (this.recordedChunks.length === 0) {
-        console.warn('⚠️ 没有录音数据')
+      if (!event.data || event.data.size === 0) {
         return
       }
 
-      console.log(`🎤 处理批量音频: ${this.recordedChunks.length} 个音频块`)
+      const audioBuffer = await event.data.arrayBuffer()
+      console.log(`🎤 发送实时音频块: ${audioBuffer.byteLength} bytes`)
 
-      // 合并所有音频块
-      const audioBlob = new Blob(this.recordedChunks, { type: this.recordedChunks[0].type })
-      const audioBuffer = await audioBlob.arrayBuffer()
-
-      console.log(`📦 批量音频数据: ${audioBuffer.byteLength} bytes, 格式: ${audioBlob.type}`)
-
-      // 发送完整音频到WebSocket
       if (this.currentWsClient?.isConnected) {
         this.currentWsClient.sendAudioData(audioBuffer)
-        console.log(`📤 已发送批量音频到服务器: ${audioBuffer.byteLength} bytes`)
+        console.log(`📤 已发送实时音频块到服务器: ${audioBuffer.byteLength} bytes`)
       } else {
         console.error('❌ WebSocket未连接，无法发送音频数据')
       }
-
-      // 清理录音数据
-      this.recordedChunks = []
-
-      // 完成后清理WebSocket客户端引用
-      this.currentWsClient = null
-
     } catch (error) {
-      console.error('❌ 处理批量音频失败:', error)
+      console.error('❌ 处理实时音频块失败:', error)
     }
   }
 
   private async handleMediaRecorderStop(): Promise<void> {
+    let caughtError: unknown
+    const resolve = this.stopRecordingResolve
+    const reject = this.stopRecordingReject
     try {
-      await this.processBatchAudio()
-      this.stopRecordingResolve?.()
+      await Promise.allSettled(Array.from(this.pendingChunkSends))
     } catch (error) {
       console.error('❌ 处理录音停止事件失败:', error)
-      this.stopRecordingReject?.(error)
+      caughtError = error
     } finally {
       this.stopRecordingResolve = undefined
       this.stopRecordingReject = undefined
       this.stopRecordingPromise = null
+      this.pendingChunkSends = new Set()
+
+      if (this.audioStream) {
+        this.audioStream.getTracks().forEach(track => track.stop())
+      }
       this.mediaRecorder = null
       this.audioStream = null
+      this.currentWsClient = null
+
+      if (caughtError) {
+        reject?.(caughtError)
+      } else {
+        resolve?.()
+      }
     }
   }
 
@@ -882,15 +870,20 @@ export class VocaTaAIChat {
 
   // 开始录音
   async startRecording(): Promise<void> {
+    let audioStartSent = false
     try {
-      console.log('📞 开始批量录音')
+      console.log('📞 开始实时分块录音')
 
       await this.ensureWebSocketConnection()
-      await this.audioManager.startRecording(this.wsClient!)
       this.wsClient?.startAudioRecording()
+      audioStartSent = true
+      await this.audioManager.startRecording(this.wsClient!)
 
     } catch (error) {
       console.error('❌ 无法启动录音:', error)
+      if (audioStartSent) {
+        this.wsClient?.sendControlMessage({ type: 'audio_cancel' })
+      }
       throw error
     }
   }
@@ -905,7 +898,7 @@ export class VocaTaAIChat {
 
   // 停止录音
   async stopRecording(): Promise<void> {
-    console.log('📞 停止录音并发送批量音频')
+    console.log('📞 停止录音并完成音频流刷新')
 
     await this.audioManager.stopRecording()
     this.wsClient?.stopAudioRecording()
@@ -918,7 +911,7 @@ export class VocaTaAIChat {
       throw new Error('WebSocket未连接，无法启动音频通话')
     }
 
-    console.log('📞 音频通话已激活，等待用户点击开始说话')
+    console.log('📞 音频通话已激活，等待用户点击开始实时捕获')
     this.isAudioCallActive = true
 
     // 清空残留的播放队列，确保新的通话段落从空状态开始

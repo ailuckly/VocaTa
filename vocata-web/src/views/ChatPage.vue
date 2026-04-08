@@ -69,7 +69,7 @@
             type="textarea"
             v-model="input"
             :autosize="{ minRows: 1, maxRows: 5 }"
-            :placeholder="isAIConnected ? '输入消息或点击通话按钮开始语音对话...' : '连接中，请稍等...'"
+            :placeholder="isAIConnected ? '输入消息或点击通话按钮开始实时语音对话...' : '连接中，请稍等...'"
             @keydown.enter.prevent="sendMessage"
             :disabled="!isAIConnected"
             resize="none"
@@ -84,14 +84,14 @@
           :class="{ active: isAudioCallActive, recording: aiChat?.recording }"
           @click="toggleAudioCall"
           :disabled="!isAIConnected"
-          :title="isAudioCallActive ? '点击挂断通话' : '点击开始语音通话'"
+          :title="isAudioCallActive ? '点击挂断通话' : '点击开始实时语音对话'"
         >
           <el-icon v-if="!isAudioCallActive"><PhoneFilled /></el-icon>
           <el-icon v-else><Close /></el-icon>
         </button>
       </div>
 
-      <!-- 极简语音界面 -->
+      <!-- 极简语音界面 - 实时捕获 -->
       <div class="voice-minimal" v-if="isAudioCallActive">
         <div class="voice-minimal__avatar" :class="{
           'is-speaking': isAISpeaking,
@@ -106,7 +106,7 @@
 
         <div class="voice-minimal__transcripts">
           <div v-if="!visibleVoiceTranscripts.length" class="voice-minimal__transcripts-empty">
-            暂无语音内容，点击开始说话或等待 AI 回复。
+            暂无语音内容，点击开始实时捕获或等待 AI 回复。
           </div>
           <div v-else class="voice-minimal__transcripts-list">
             <div
@@ -138,7 +138,7 @@
         </div>
 
         <div class="voice-minimal__hint">
-          提示：点击录音按钮即可说话，当说完话时再次点击即可结束录音，等待 AI 回答
+          提示：点击麦克风即可开始实时捕获语音，再点一次结束本轮捕获，等待 AI 回答
         </div>
       </div>
     </div>
@@ -485,11 +485,11 @@ const characterInitials = computed(() => {
 const voiceStatusText = computed(() => {
   if (!isAIConnected.value) return '语音通道连接中…'
   if (aiChat.value?.recording) {
-    return vadActive.value ? '正在收音…' : '准备开始说话'
+    return vadActive.value ? '正在实时捕获…' : '实时捕获中，准备说话'
   }
   if (isAISpeaking.value) return 'AI 正在回答'
   if (isAIThinking.value) return 'AI 正在思考…'
-  return '点击下方按钮开启语音对话'
+  return '点击下方按钮开启实时语音对话'
 })
 
 const visibleVoiceTranscripts = computed(() => voiceTranscripts.value.slice(-6))
@@ -1348,7 +1348,7 @@ const formatTime = (dateString: string) => {
   100% { transform: scale(1.4); opacity: 0; }
 }
 
-// ChatGPT风格语音通话界面样式 - 修复尺寸问题
+// ChatGPT风格实时语音捕获界面样式 - 修复尺寸问题
 .chatgpt-voice-chat {
   position: fixed;
   top: 0;
