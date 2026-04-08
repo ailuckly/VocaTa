@@ -28,6 +28,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * binary audio frame: append one audio chunk to current session stream
  * audio_end: complete current audio stream and trigger downstream processing
  * audio_cancel: abort current audio stream and discard partial session state
+ * ping: keepalive control message
  *
  * Server -> client
  * stt_result: incremental transcript, may be interim or final
