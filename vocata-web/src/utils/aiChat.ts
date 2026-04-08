@@ -791,7 +791,7 @@ export class VocaTaAIChat {
   private handleWebSocketMessage(message: WebSocketMessage): void {
     switch (message.type) {
       case 'stt_result':
-        this.handleSTTResult(message as STTResultMessage)
+        this.handleSTTResult(message as ServerSttMessage)
         break
 
       case 'llm_text_stream':
@@ -811,7 +811,7 @@ export class VocaTaAIChat {
         break
 
       case 'error':
-        this.handleError(message as ErrorMessage)
+        this.handleError(message as ServerErrorMessage)
         break
 
       default:
@@ -866,7 +866,7 @@ export class VocaTaAIChat {
     console.log('✅ 处理完成:', message.message)
   }
 
-  private handleError(message: ErrorMessage): void {
+  private handleError(message: ServerErrorMessage): void {
     console.error('❌ 服务器错误:', message.error)
   }
 

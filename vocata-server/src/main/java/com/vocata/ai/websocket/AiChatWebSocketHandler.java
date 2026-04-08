@@ -24,9 +24,9 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * Protocol contract:
  * Client -> server
- * audio_start: create stream context and start incremental STT subscription
+ * audio_start: initialize the current session stream context
  * binary audio frame: append one audio chunk to current session stream
- * audio_end: complete current audio stream
+ * audio_end: complete current audio stream and trigger downstream processing
  * audio_cancel: abort current audio stream and discard partial session state
  *
  * Server -> client
@@ -126,11 +126,11 @@ public class AiChatWebSocketHandler extends BinaryWebSocketHandler {
 
             switch (type) {
                 case "audio_start":
-                    // audio_start: create stream context and start incremental STT subscription
+                    // audio_start: initialize the current session stream context
                     handleAudioStart(session);
                     break;
                 case "audio_end":
-                    // audio_end: complete current audio stream
+                    // audio_end: complete current audio stream and trigger downstream processing
                     handleAudioEnd(session, data);
                     break;
                 case "audio_cancel":
