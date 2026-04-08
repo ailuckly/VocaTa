@@ -336,6 +336,23 @@ export class AudioManager {
     return run
   }
 
+  private resetRecordingState(options: { stopTracks?: boolean } = {}): void {
+    if (options.stopTracks && this.audioStream) {
+      this.audioStream.getTracks().forEach(track => track.stop())
+    }
+
+    this.audioStream = null
+    this.mediaRecorder = null
+    this.currentWsClient = null
+    this.pendingChunkSends = new Set()
+    this.chunkSendFailureCount = 0
+    this.stopRecordingPromise = null
+    this.stopRecordingResolve = undefined
+    this.stopRecordingReject = undefined
+    this.recordingState = 'idle'
+    this.isRecording = false
+  }
+
   // 延迟初始化AudioContext，在用户交互后调用
   private async ensureAudioContext(): Promise<void> {
     if (!this.audioContext) {
@@ -364,6 +381,11 @@ export class AudioManager {
     shouldAbort?: () => boolean
   ): Promise<boolean> {
     return this.enqueueLifecycleOperation(async () => {
+      const abortAndCleanup = (stopTracks = true): false => {
+        this.resetRecordingState({ stopTracks })
+        return false
+      }
+
       try {
         if (this.recordingState !== 'idle') {
           throw new Error('录音会话已在进行中')
@@ -383,12 +405,12 @@ export class AudioManager {
 
         // 确保AudioContext已初始化
         if (shouldAbort?.()) {
-          return false
+          return abortAndCleanup()
         }
 
         await this.ensureAudioContext()
         if (shouldAbort?.()) {
-          return false
+          return abortAndCleanup()
         }
 
         console.log('🎤 请求麦克风权限...')
@@ -404,11 +426,7 @@ export class AudioManager {
           }
         })
         if (shouldAbort?.()) {
-          this.audioStream.getTracks().forEach(track => track.stop())
-          this.audioStream = null
-          this.currentWsClient = null
-          this.recordingState = 'idle'
-          return false
+          return abortAndCleanup()
         }
 
         // 验证音频流
@@ -425,11 +443,7 @@ export class AudioManager {
           throw new Error('未能获取有效的音频轨道')
         }
         if (shouldAbort?.()) {
-          this.audioStream.getTracks().forEach(track => track.stop())
-          this.audioStream = null
-          this.currentWsClient = null
-          this.recordingState = 'idle'
-          return false
+          return abortAndCleanup()
         }
 
         // 选择最佳音频格式
@@ -503,16 +517,11 @@ export class AudioManager {
         this.mediaRecorder.start(CHUNK_MS)
         await startedPromise
         if (shouldAbort?.()) {
-          return false
+          return abortAndCleanup()
         }
         return true
       } catch (error) {
-        this.recordingState = 'idle'
-        this.isRecording = false
-        this.currentWsClient = null
-        this.mediaRecorder = null
-        this.audioStream?.getTracks().forEach(track => track.stop())
-        this.audioStream = null
+        this.resetRecordingState({ stopTracks: true })
         console.error('❌ 录音启动失败:', error)
         throw error
       }

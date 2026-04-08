@@ -714,7 +714,7 @@ const setupAIChatCallbacks = () => {
 // 音频通话相关方法
 const toggleAudioCall = async () => {
   if (isAudioCallActive.value) {
-    stopAudioCall()
+    await stopAudioCall()
   } else {
     await startAudioCall()
   }
@@ -742,12 +742,12 @@ const startAudioCall = async () => {
   }
 }
 
-const stopAudioCall = () => {
+const stopAudioCall = async () => {
   try {
     if (!aiChat.value) return
 
     console.log('📞 停止音频通话')
-    aiChat.value.stopAudioCall()
+    await aiChat.value.stopAudioCall()
     isAudioCallActive.value = false
     currentSTTText.value = ''
     isAISpeaking.value = false
@@ -757,6 +757,7 @@ const stopAudioCall = () => {
 
   } catch (error) {
     console.error('❌ 停止音频通话失败:', error)
+    ElMessage.error('停止音频通话失败: ' + (error as Error).message)
   }
 }
 
@@ -767,15 +768,15 @@ const toggleMicrophone = async () => {
     if (aiChat.value.recording) {
       // 当前在录音，停止录音
       console.log('🛑 停止录音')
-      aiChat.value.stopRecording()
+      await aiChat.value.stopRecording()
     } else {
       // 当前没有录音，开始录音
       console.log('🎤 开始录音')
-      aiChat.value.startRecording()
+      await aiChat.value.startRecording()
     }
   } catch (error) {
     console.error('❌ 切换麦克风状态失败:', error)
-    ElMessage.error('切换麦克风状态失败')
+    ElMessage.error('切换麦克风状态失败: ' + (error as Error).message)
   }
 }
 
