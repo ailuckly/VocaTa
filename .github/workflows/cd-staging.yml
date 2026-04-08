@@ -51,11 +51,11 @@ jobs:
         fi
 
         if [ ! -d "$REPO_DIR/.git" ]; then
-          echo "[1/4] clone fresh repository"
+          echo "[1/5] clone fresh repository"
           rm -rf "$REPO_DIR"
           git clone --branch "$GIT_REF" --depth 1 "$REPO_URL" "$REPO_DIR"
         else
-          echo "[1/4] update repository"
+          echo "[1/5] update repository"
           cd "$REPO_DIR"
           git remote set-url origin "$REPO_URL"
           git fetch --depth 1 origin "$GIT_REF"
@@ -66,15 +66,17 @@ jobs:
         cd "$REPO_DIR"
         git remote set-url origin "$REPO_URL"
 
-        echo "[2/4] deploy compose stack"
+        echo "[2/5] deploy compose stack"
         echo "当前提交: $GIT_SHA"
         docker compose --env-file "$ENV_FILE" up -d --build --wait
 
-        echo "[3/4] inspect compose status"
+        echo "[3/5] inspect compose status"
         docker compose --env-file "$ENV_FILE" ps
 
-        echo "[4/4] check backend health"
-        curl -fsS http://127.0.0.1:9009/api/health
+        echo "[4/5] run staging validation script"
+        APP_DIR="$APP_DIR" ENV_FILE="$ENV_FILE" ./scripts/validate-staging-host.sh
+
+        echo "[5/5] staging deploy verification complete"
         EOF
 
     - name: 失败时输出日志
