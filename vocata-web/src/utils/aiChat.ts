@@ -359,7 +359,10 @@ export class AudioManager {
     }
   }
 
-  async startRecording(wsClient: VocaTaWebSocketClient): Promise<void> {
+  async startRecording(
+    wsClient: VocaTaWebSocketClient,
+    shouldAbort?: () => boolean
+  ): Promise<boolean> {
     return this.enqueueLifecycleOperation(async () => {
       try {
         if (this.recordingState !== 'idle') {
@@ -379,7 +382,14 @@ export class AudioManager {
         this.activeSessionId = sessionId
 
         // 确保AudioContext已初始化
+        if (shouldAbort?.()) {
+          return false
+        }
+
         await this.ensureAudioContext()
+        if (shouldAbort?.()) {
+          return false
+        }
 
         console.log('🎤 请求麦克风权限...')
 
@@ -393,6 +403,13 @@ export class AudioManager {
             autoGainControl: true
           }
         })
+        if (shouldAbort?.()) {
+          this.audioStream.getTracks().forEach(track => track.stop())
+          this.audioStream = null
+          this.currentWsClient = null
+          this.recordingState = 'idle'
+          return false
+        }
 
         // 验证音频流
         const tracks = this.audioStream.getTracks()
@@ -406,6 +423,13 @@ export class AudioManager {
 
         if (audioTracks.length === 0 || !this.audioStream.active) {
           throw new Error('未能获取有效的音频轨道')
+        }
+        if (shouldAbort?.()) {
+          this.audioStream.getTracks().forEach(track => track.stop())
+          this.audioStream = null
+          this.currentWsClient = null
+          this.recordingState = 'idle'
+          return false
         }
 
         // 选择最佳音频格式
@@ -444,6 +468,16 @@ export class AudioManager {
               resolve()
               return
             }
+            if (shouldAbort?.()) {
+              this.recordingState = 'stopping'
+              try {
+                this.mediaRecorder?.stop()
+              } catch (error) {
+                console.error('❌ 启动后立即停止录音失败:', error)
+              }
+              resolve()
+              return
+            }
             this.recordingState = 'recording'
             this.isRecording = true
             console.log(`✅ 开始实时分块录音 (${CHUNK_MS}ms/chunk)`)
@@ -468,6 +502,10 @@ export class AudioManager {
 
         this.mediaRecorder.start(CHUNK_MS)
         await startedPromise
+        if (shouldAbort?.()) {
+          return false
+        }
+        return true
       } catch (error) {
         this.recordingState = 'idle'
         this.isRecording = false
@@ -708,6 +746,10 @@ export class VocaTaAIChat {
   private isAudioCallActive = false
   private conversationUuid: string | null = null
   private connectingPromise: Promise<void> | null = null
+  private voiceState: 'idle' | 'starting' | 'recording' | 'stopping' = 'idle'
+  private pendingStartPromise: Promise<boolean> | null = null
+  private pendingStopPromise: Promise<void> | null = null
+  private stopRequested = false
 
   // 临时消息存储，用于流式显示
   private currentLLMResponse = ''
@@ -937,22 +979,57 @@ export class VocaTaAIChat {
 
   // 开始录音
   async startRecording(): Promise<void> {
-    let audioStartSent = false
-    try {
-      console.log('📞 开始实时分块录音')
-
-      await this.ensureWebSocketConnection()
-      this.wsClient?.startAudioRecording()
-      audioStartSent = true
-      await this.audioManager.startRecording(this.wsClient!)
-
-    } catch (error) {
-      console.error('❌ 无法启动录音:', error)
-      if (audioStartSent) {
-        this.wsClient?.sendControlMessage({ type: 'audio_cancel' })
-      }
-      throw error
+    if (this.voiceState === 'starting') {
+      return this.pendingStartPromise ? this.pendingStartPromise.then(() => undefined) : undefined
     }
+
+    if (this.voiceState === 'recording' || this.voiceState === 'stopping') {
+      return
+    }
+
+    this.voiceState = 'starting'
+    this.stopRequested = false
+
+    this.pendingStartPromise = (async () => {
+      let started = false
+      let shouldCancel = false
+      try {
+        console.log('📞 开始实时分块录音')
+
+        await this.ensureWebSocketConnection()
+        if (!this.wsClient) {
+          throw new Error('WebSocket客户端未初始化')
+        }
+
+        this.wsClient.startAudioRecording()
+
+        started = await this.audioManager.startRecording(this.wsClient, () => this.stopRequested)
+        shouldCancel = this.stopRequested || !started
+
+        if (shouldCancel) {
+          if (started) {
+            await this.audioManager.stopRecording()
+          }
+          this.wsClient.sendControlMessage({ type: 'audio_cancel' })
+          this.voiceState = 'idle'
+          return false
+        }
+
+        this.voiceState = 'recording'
+        return true
+      } catch (error) {
+        console.error('❌ 无法启动录音:', error)
+        if (this.wsClient) {
+          this.wsClient.sendControlMessage({ type: 'audio_cancel' })
+        }
+        this.voiceState = 'idle'
+        throw error
+      } finally {
+        this.pendingStartPromise = null
+      }
+    })()
+
+    return this.pendingStartPromise.then(() => undefined)
   }
 
   async prepareAudioPlayback(): Promise<void> {
@@ -967,10 +1044,40 @@ export class VocaTaAIChat {
   async stopRecording(): Promise<void> {
     console.log('📞 停止录音并完成音频流刷新')
 
-    const stoppedActiveSession = await this.audioManager.stopRecording()
-    if (stoppedActiveSession) {
-      this.wsClient?.stopAudioRecording()
+    if (this.voiceState === 'idle') {
+      return
     }
+
+    if (this.voiceState === 'starting') {
+      this.stopRequested = true
+      if (this.pendingStartPromise) {
+        await this.pendingStartPromise
+      }
+      return
+    }
+
+    if (this.voiceState === 'stopping') {
+      if (this.pendingStopPromise) {
+        await this.pendingStopPromise
+      }
+      return
+    }
+
+    this.voiceState = 'stopping'
+    this.pendingStopPromise = (async () => {
+      try {
+        const stoppedActiveSession = await this.audioManager.stopRecording()
+        if (stoppedActiveSession) {
+          this.wsClient?.stopAudioRecording()
+        }
+      } finally {
+        this.voiceState = 'idle'
+        this.pendingStopPromise = null
+        this.stopRequested = false
+      }
+    })()
+
+    await this.pendingStopPromise
   }
 
   // 兼容旧的音频通话方法
@@ -989,7 +1096,7 @@ export class VocaTaAIChat {
   }
 
   async stopAudioCall(): Promise<void> {
-    if (this.recording) {
+    if (this.voiceState !== 'idle') {
       await this.stopRecording()
     }
     this.isAudioCallActive = false
@@ -999,7 +1106,6 @@ export class VocaTaAIChat {
     if (this.wsClient) {
       const client = this.wsClient
       if (client.isConnected) {
-        client.sendControlMessage({ type: 'audio_cancel' })
         setTimeout(() => {
           client.disconnect()
         }, 100)
