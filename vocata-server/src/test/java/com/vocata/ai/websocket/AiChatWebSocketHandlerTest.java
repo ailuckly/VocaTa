@@ -23,6 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -127,6 +128,46 @@ class AiChatWebSocketHandlerTest {
 
         assertTrue(cancelled.get());
         assertTrue(voiceSessions().isEmpty());
+    }
+
+    @Test
+    void sttResultIsForwardedToClientWithNormalizedFields() throws Exception {
+        WebSocketSession session = mockVoiceSession();
+        AtomicInteger textMessages = new AtomicInteger();
+        AtomicBoolean normalizedSttSeen = new AtomicBoolean();
+
+        doNothing().when(session).sendMessage(any(WebSocketMessage.class));
+        org.mockito.Mockito.doAnswer(invocation -> {
+            WebSocketMessage<?> outbound = invocation.getArgument(0);
+            if (outbound instanceof TextMessage textMessage) {
+                textMessages.incrementAndGet();
+                String payload = textMessage.getPayload();
+                if (payload.contains("\"type\":\"stt_result\"")
+                        && payload.contains("\"text\":\"你好\"")
+                        && payload.contains("\"isFinal\":false")
+                        && payload.contains("\"confidence\":0.75")) {
+                    normalizedSttSeen.set(true);
+                }
+            }
+            return null;
+        }).when(session).sendMessage(any(WebSocketMessage.class));
+
+        when(aiStreamingService.processVoiceMessage(eq(conversationUuid(session)), eq("42"), any()))
+                .thenReturn(Flux.just(Map.of(
+                        "type", "stt_result",
+                        "payload", Map.of(
+                                "text", "你好",
+                                "confidence", 0.75,
+                                "is_final", false
+                        )
+                )));
+
+        handler.handleMessage(session, new TextMessage("{\"type\":\"audio_start\"}"));
+        handler.handleMessage(session, new TextMessage("{\"type\":\"audio_end\"}"));
+
+        verify(session, atLeastOnce()).sendMessage(any(WebSocketMessage.class));
+        assertTrue(textMessages.get() >= 2);
+        assertTrue(normalizedSttSeen.get());
     }
 
     private WebSocketSession mockVoiceSession() throws IOException {
