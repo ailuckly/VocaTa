@@ -665,6 +665,9 @@ public class AiStreamingService {
             Long userIdLong = Long.parseLong(userId);
 
             return processAudioInput(uuid, audioStream, userIdLong)
+                    .doOnSubscribe(ignored -> logger.info("开始消费实时语音流，对话: {}, 用户: {}", conversationUuid, userId))
+                    .doFinally(signalType -> logger.info("实时语音流处理结束，对话: {}, 用户: {}, 信号: {}",
+                            conversationUuid, userId, signalType))
                     .map(this::convertToWebSocketResponse)
                     .onErrorResume(error -> {
                         logger.error("语音处理失败", error);
