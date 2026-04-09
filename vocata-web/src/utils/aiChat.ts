@@ -866,7 +866,7 @@ export class VocaTaAIChat {
       this.wsClient.on('disconnected', (payload: { event: CloseEvent, manual: boolean }) => {
         if (!payload?.manual) {
           console.log('📡 WebSocket连接断开，正在重连...')
-          this.onConnectionStatusCallback?.('disconnected', '连接已断开，正在重连...')
+          this.onConnectionStatusCallback?.('disconnected', '语音连接已断开，正在重连...')
         } else {
           console.log('📡 WebSocket连接已手动关闭')
         }
@@ -988,6 +988,10 @@ export class VocaTaAIChat {
 
   // 开始录音
   async startRecording(): Promise<void> {
+    if (!this.audioCallActive) {
+      throw new Error('音频通话未激活')
+    }
+
     if (this.voiceState === 'starting') {
       return this.pendingStartPromise ? this.pendingStartPromise.then(() => undefined) : undefined
     }
@@ -1028,6 +1032,13 @@ export class VocaTaAIChat {
         return true
       } catch (error) {
         console.error('❌ 无法启动录音:', error)
+        const errorMessage = error instanceof Error ? error.message : '无法启动录音'
+        const errorName = error instanceof DOMException ? error.name : ''
+        if (errorName === 'NotAllowedError' || errorName === 'SecurityError') {
+          this.onConnectionStatusCallback?.('error', '麦克风权限失败')
+        } else {
+          this.onConnectionStatusCallback?.('error', errorMessage)
+        }
         if (this.wsClient) {
           this.wsClient.sendControlMessage({ type: 'audio_cancel' })
         }

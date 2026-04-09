@@ -174,7 +174,11 @@ public class AiChatWebSocketHandler extends BinaryWebSocketHandler {
         String sessionId = session.getId();
         logger.info("开始音频录制: {}", sessionId);
 
-        closeVoiceSession(sessionId);
+        if (voiceSessions.containsKey(sessionId)) {
+            logger.warn("重复启动音频录制，已有进行中的音频会话: {}", sessionId);
+            sendErrorMessage(session, "已有进行中的音频会话");
+            return;
+        }
 
         String conversationUuid = extractConversationUuid(session.getUri().toString());
         String authenticatedUserId = (String) session.getAttributes().get("authenticatedUserId");

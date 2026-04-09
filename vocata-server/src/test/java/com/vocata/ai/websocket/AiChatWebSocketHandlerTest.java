@@ -170,6 +170,40 @@ class AiChatWebSocketHandlerTest {
         assertTrue(normalizedSttSeen.get());
     }
 
+    @Test
+    void duplicateAudioStartReturnsExplicitSessionError() throws Exception {
+        WebSocketSession session = mockVoiceSession();
+        AtomicInteger subscriptions = new AtomicInteger();
+        AtomicBoolean duplicateStartErrorSeen = new AtomicBoolean();
+
+        doNothing().when(session).sendMessage(any(WebSocketMessage.class));
+        org.mockito.Mockito.doAnswer(invocation -> {
+            WebSocketMessage<?> outbound = invocation.getArgument(0);
+            if (outbound instanceof TextMessage textMessage) {
+                String payload = textMessage.getPayload();
+                if (payload.contains("\"type\":\"error\"")
+                        && payload.contains("已有进行中的音频会话")) {
+                    duplicateStartErrorSeen.set(true);
+                }
+            }
+            return null;
+        }).when(session).sendMessage(any(WebSocketMessage.class));
+
+        when(aiStreamingService.processVoiceMessage(eq(conversationUuid(session)), eq("42"), any()))
+                .thenAnswer(invocation -> {
+                    Flux<byte[]> audioStream = invocation.getArgument(2);
+                    return audioStream
+                            .doOnSubscribe(ignored -> subscriptions.incrementAndGet())
+                            .thenMany(Flux.<Map<String, Object>>never());
+                });
+
+        handler.handleMessage(session, new TextMessage("{\"type\":\"audio_start\"}"));
+        handler.handleMessage(session, new TextMessage("{\"type\":\"audio_start\"}"));
+
+        assertEquals(1, subscriptions.get());
+        assertTrue(duplicateStartErrorSeen.get());
+    }
+
     private WebSocketSession mockVoiceSession() throws IOException {
         WebSocketSession session = mock(WebSocketSession.class);
         Map<String, Object> attributes = new HashMap<>();
