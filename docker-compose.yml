@@ -84,6 +84,7 @@ services:
         condition: service_healthy
     volumes:
       - ./vocata-server/logs:/app/logs
+      - ./data/img:/app/data/img:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9009/api/health"]
       interval: 30s
