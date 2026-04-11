@@ -292,7 +292,7 @@ public class VolcanTtsClient implements TtsClient {
 
         // 优先使用Access Token认证（推荐方式）
         if (accessToken != null && !accessToken.isEmpty()) {
-            headers.put("Authorization", "Bearer; " + accessToken);
+            headers.put("Authorization", "Bearer " + accessToken);
             logger.debug("使用Bearer Token认证方式");
         } else {
             throw new RuntimeException("缺少有效的认证信息：需要access-token");

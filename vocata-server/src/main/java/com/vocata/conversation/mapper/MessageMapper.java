@@ -5,6 +5,7 @@ import com.vocata.conversation.entity.Message;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Update;
 
 import java.util.List;
 import java.util.UUID;
@@ -73,6 +74,6 @@ public interface MessageMapper extends BaseMapper<Message> {
     /**
      * 根据对话ID删除所有消息（软删除）
      */
-    @Select("UPDATE vocata_messages SET is_delete = 1 WHERE conversation_id = #{conversationId}")
+    @Update("UPDATE vocata_messages SET is_delete = 1 WHERE conversation_id = #{conversationId}")
     void softDeleteByConversationId(@Param("conversationId") Long conversationId);
 }

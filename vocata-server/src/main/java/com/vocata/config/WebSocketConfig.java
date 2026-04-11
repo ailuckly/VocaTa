@@ -25,7 +25,7 @@ public class WebSocketConfig implements WebSocketConfigurer {
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
         // 注册AI语音对话WebSocket处理器
         registry.addHandler(aiChatWebSocketHandler, "/ws/chat/**")
-                .setAllowedOrigins("*");
+                .setAllowedOriginPatterns("*");
     }
 
     /**
