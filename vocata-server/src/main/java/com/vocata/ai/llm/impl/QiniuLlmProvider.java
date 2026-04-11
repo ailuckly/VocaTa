@@ -115,6 +115,9 @@ public class QiniuLlmProvider implements LlmProvider, InitializingBean {
 
                 logger.debug("发送七牛云AI请求，模型: {}", model);
 
+                // 用 StringBuilder 追踪累积文本，通过 doOnNext 设置到每个 chunk
+                StringBuilder accumulated = new StringBuilder();
+
                 return webClient
                         .post()
                         .uri("/chat/completions")
@@ -129,34 +132,21 @@ public class QiniuLlmProvider implements LlmProvider, InitializingBean {
                             DataBufferUtils.release(dataBuffer);
                             return new String(bytes, StandardCharsets.UTF_8);
                         })
-                        .buffer() // 缓冲数据以处理不完整的SSE消息
-                        .flatMap(lines -> {
-                            String combined = String.join("", lines);
-                            return Flux.fromArray(combined.split("\n"))
+                        .concatMap(rawChunk -> {
+                            // 逐行解析 SSE
+                            return Flux.fromArray(rawChunk.split("\n"))
                                     .filter(line -> line.startsWith("data: ") && !line.equals("data: [DONE]"))
                                     .map(line -> line.substring(6).trim())
                                     .filter(data -> !data.isEmpty());
                         })
                         .timeout(Duration.ofSeconds(timeoutSeconds))
-                        .flatMap(this::parseQiniuStreamChunk)
-                        .collectList() // 收集所有chunk
-                        .flatMapMany(chunks -> {
-                            // 手动处理累积内容
-                            StringBuilder accumulated = new StringBuilder();
-                            List<UnifiedAiStreamChunk> updatedChunks = new ArrayList<>();
-
-                            for (UnifiedAiStreamChunk chunk : chunks) {
-                                if (chunk.getContent() != null && !chunk.getContent().isEmpty()) {
-                                    accumulated.append(chunk.getContent());
-                                }
-                                chunk.setAccumulatedContent(accumulated.toString());
-                                updatedChunks.add(chunk);
+                        .concatMap(this::parseQiniuStreamChunk)
+                        .doOnNext(chunk -> {
+                            // 真流式：每个 chunk 逐个 emit，增量计算 accumulatedContent
+                            if (chunk.getContent() != null && !chunk.getContent().isEmpty()) {
+                                accumulated.append(chunk.getContent());
                             }
-
-                            logger.info("七牛云AI响应解析完成，生成{}个chunk，总内容长度: {}",
-                                updatedChunks.size(), accumulated.length());
-
-                            return Flux.fromIterable(updatedChunks);
+                            chunk.setAccumulatedContent(accumulated.toString());
                         })
                         .doOnError(error -> logger.error("七牛云AI API调用失败: {}", error.getMessage()))
                         .onErrorResume(error -> {

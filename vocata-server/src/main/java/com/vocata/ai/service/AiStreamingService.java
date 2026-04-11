@@ -426,23 +426,22 @@ public class AiStreamingService {
             Conversation conversation = conversationService.getConversationByUuid(uuid);
             Character character = characterMapper.selectById(conversation.getCharacterId());
 
-            // 保存用户消息
-            saveMessage(conversation.getId(), text, SenderType.USER, userIdLong)
-                    .subscribe(msg -> logger.debug("已保存用户消息: {}", msg.getId()));
-
             // 构建LLM请求
             UnifiedAiRequest llmRequest = buildLlmRequest(conversation, character, text);
 
-            // 调用LLM并收集完整响应
-            return llmProvider.streamChat(llmRequest)
-                    .reduce("", (accumulated, chunk) -> accumulated + chunk.getContent())
-                    .map(fullResponse -> {
-                        // 保存AI消息
-                        saveMessage(conversation.getId(), fullResponse, SenderType.CHARACTER, userIdLong)
-                                .subscribe(msg -> logger.debug("已保存AI消息: {}", msg.getId()));
-
-                        return new LlmResponse(fullResponse, character.getName(), true);
-                    })
+            // 先保存用户消息，再调用 LLM
+            return saveMessage(conversation.getId(), text, SenderType.USER, userIdLong)
+                    .doOnSuccess(msg -> logger.debug("已保存用户消息: {}", msg.getId()))
+                    .then(
+                        llmProvider.streamChat(llmRequest)
+                            .reduce("", (accumulated, chunk) ->
+                                    accumulated + (chunk.getContent() != null ? chunk.getContent() : ""))
+                            .flatMap(fullResponse ->
+                                saveMessage(conversation.getId(), fullResponse, SenderType.CHARACTER, userIdLong)
+                                    .doOnSuccess(msg -> logger.debug("已保存AI消息: {}", msg.getId()))
+                                    .thenReturn(new LlmResponse(fullResponse, character.getName(), true))
+                            )
+                    )
                     .doOnNext(response -> logger.debug("LLM完整回复: {}", response.getText()));
 
         } catch (Exception e) {
@@ -548,17 +547,17 @@ public class AiStreamingService {
 
             logger.info("【LLM阶段】开始处理用户文字消息: {}", textMessage);
 
-            // 保存用户消息
-            saveMessage(finalConversation.getId(), textMessage, SenderType.USER, finalUserIdLong)
-                .subscribe(msg -> logger.debug("已保存用户文字消息: {}", msg.getId()));
-
             // 构建LLM请求
             UnifiedAiRequest llmRequest = buildLlmRequest(finalConversation, character, textMessage);
 
             // 收集完整的LLM响应用于TTS
             StringBuilder fullResponseBuilder = new StringBuilder();
 
-            return llmProvider.streamChat(llmRequest)
+            // 先保存用户消息，再开始 LLM 处理
+            return saveMessage(finalConversation.getId(), textMessage, SenderType.USER, finalUserIdLong)
+                .doOnSuccess(msg -> logger.debug("已保存用户文字消息: {}", msg.getId()))
+                .thenMany(
+                    llmProvider.streamChat(llmRequest)
                 .doOnNext(chunk -> {
                     String chunkContent = chunk.getContent() != null ? chunk.getContent() : "";
                     logger.debug("【LLM阶段】收到文字流块: {}", chunkContent);
@@ -581,20 +580,18 @@ public class AiStreamingService {
                     // LLM完成后，处理TTS
                     Mono.fromCallable(() -> fullResponseBuilder.toString())
                         .filter(fullText -> !fullText.trim().isEmpty())
-                        .doOnNext(fullText -> {
-                            logger.info("【TTS阶段】开始处理完整回复: {}", fullText);
-                            // 保存AI消息
-                            saveMessage(finalConversation.getId(), fullText, SenderType.CHARACTER, finalUserIdLong)
-                                .subscribe(msg -> logger.debug("已保存AI回复消息: {}", msg.getId()));
-                        })
                         .flatMapMany(fullText -> {
-                            // TTS流式处理 - 正确的架构
+                            logger.info("【TTS阶段】开始处理完整回复: {}", fullText);
+                            // 先保存AI消息，再启动TTS
+                            return saveMessage(finalConversation.getId(), fullText, SenderType.CHARACTER, finalUserIdLong)
+                                .doOnSuccess(msg -> logger.debug("已保存AI回复消息: {}", msg.getId()))
+                                .thenMany(Flux.defer(() -> {
+                            // TTS流式处理
                             TtsClient.TtsConfig ttsConfig = new TtsClient.TtsConfig(
                                 character.getVoiceId(), character.getLanguage());
 
                             logger.info("【TTS阶段】开始流式语音合成，语音ID: {}", character.getVoiceId());
 
-                            // 直接返回TTS音频流，不收集不上传
                             return ttsClient.streamSynthesize(Flux.just(fullText), ttsConfig)
                                 .doOnNext(audioData -> logger.debug("【TTS阶段】生成音频块: {} bytes", audioData.length))
                                 .map(audioData -> {
@@ -608,14 +605,14 @@ public class AiStreamingService {
                                     logger.info("【TTS阶段】流式语音合成完成");
                                 })
                                 .concatWith(Mono.fromCallable(() -> {
-                                    // 发送音频完成标志
                                     Map<String, Object> completeResponse = new HashMap<>();
                                     completeResponse.put("type", "audio_complete");
                                     completeResponse.put("timestamp", System.currentTimeMillis());
                                     return completeResponse;
                                 }));
-                        })
-                )
+                            })); // close Flux.defer + thenMany
+                        }) // close flatMapMany
+                ) // close concatWith
                 .concatWith(Mono.fromCallable(() -> {
                     // 发送最终完成信号
                     Map<String, Object> finalCompleteResponse = new HashMap<>();
@@ -633,7 +630,8 @@ public class AiStreamingService {
                         "timestamp", System.currentTimeMillis()
                     );
                     return Flux.just(errorResponse);
-                });
+                })
+                ); // close thenMany
 
         } catch (Exception e) {
             logger.error("文字消息参数解析失败", e);
