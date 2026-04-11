@@ -105,7 +105,11 @@ export class VocaTaWebSocketClient {
       return
     }
 
-    const wsUrl = `ws://${import.meta.env.VITE_APP_URL.replace('http://', '')}/ws/chat/${this.conversationUuid}?token=${encodeURIComponent(token)}`
+    const appUrl = import.meta.env.VITE_APP_URL || window.location.origin
+    const isSecure = appUrl.startsWith('https')
+    const wsProtocol = isSecure ? 'wss' : 'ws'
+    const host = appUrl.replace(/^https?:\/\//, '')
+    const wsUrl = `${wsProtocol}://${host}/ws/chat/${this.conversationUuid}?token=${encodeURIComponent(token)}`
     console.log('🔌 尝试连接WebSocket:', wsUrl)
     console.log('🔐 使用Token:', token.substring(0, 20) + '...')
 
