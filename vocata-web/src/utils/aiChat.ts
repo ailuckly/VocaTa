@@ -415,6 +415,11 @@ export class AudioManager {
 
         console.log('🎤 请求麦克风权限...')
 
+        // 检查安全上下文（getUserMedia 仅在 HTTPS 或 localhost 下可用）
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          throw new Error('当前环境不支持语音功能，请使用 HTTPS 访问或在 localhost 上测试')
+        }
+
         // 直接获取麦克风权限
         this.audioStream = await navigator.mediaDevices.getUserMedia({
           audio: {
