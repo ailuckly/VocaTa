@@ -240,26 +240,30 @@ public class OpenAiLlmProvider implements LlmProvider {
     }
 
     /**
-     * 解析OpenAI响应
+     * 解析OpenAI响应 - 使用Jackson
      */
     private Mono<UnifiedAiStreamChunk> parseOpenAiResponse(String jsonData) {
         try {
-            // 这里应该使用JSON解析库，简化处理
-            // 在实际项目中应该使用Jackson或Gson
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            com.fasterxml.jackson.databind.JsonNode root = mapper.readTree(jsonData);
+
             UnifiedAiStreamChunk chunk = new UnifiedAiStreamChunk();
             chunk.setType(UnifiedAiStreamChunk.ChunkType.CONTENT);
 
-            // 简化的JSON解析（实际应该使用Jackson）
-            if (jsonData.contains("\"content\"")) {
-                // 提取content字段的值
-                String content = extractJsonField(jsonData, "content");
-                chunk.setContent(content);
-            }
+            com.fasterxml.jackson.databind.JsonNode choices = root.get("choices");
+            if (choices != null && choices.isArray() && choices.size() > 0) {
+                com.fasterxml.jackson.databind.JsonNode choice = choices.get(0);
+                com.fasterxml.jackson.databind.JsonNode delta = choice.get("delta");
 
-            if (jsonData.contains("\"finish_reason\"")) {
-                String finishReason = extractJsonField(jsonData, "finish_reason");
-                chunk.setFinishReason(finishReason);
-                chunk.setIsFinal(!"null".equals(finishReason) && finishReason != null);
+                if (delta != null && delta.has("content") && !delta.get("content").isNull()) {
+                    chunk.setContent(delta.get("content").asText());
+                }
+
+                if (choice.has("finish_reason") && !choice.get("finish_reason").isNull()) {
+                    String finishReason = choice.get("finish_reason").asText();
+                    chunk.setFinishReason(finishReason);
+                    chunk.setIsFinal(true);
+                }
             }
 
             return Mono.just(chunk);
@@ -269,27 +273,6 @@ public class OpenAiLlmProvider implements LlmProvider {
             errorChunk.setType(UnifiedAiStreamChunk.ChunkType.ERROR);
             errorChunk.setContent("响应解析错误: " + e.getMessage());
             return Mono.just(errorChunk);
-        }
-    }
-
-    /**
-     * 简化的JSON字段提取（应该使用Jackson替代）
-     */
-    private String extractJsonField(String json, String fieldName) {
-        try {
-            String pattern = "\"" + fieldName + "\":\"";
-            int startIndex = json.indexOf(pattern);
-            if (startIndex == -1) {
-                return null;
-            }
-            startIndex += pattern.length();
-            int endIndex = json.indexOf("\"", startIndex);
-            if (endIndex == -1) {
-                return null;
-            }
-            return json.substring(startIndex, endIndex);
-        } catch (Exception e) {
-            return null;
         }
     }
 

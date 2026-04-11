@@ -123,8 +123,8 @@ public class GeminiLlmProvider implements LlmProvider, InitializingBean {
                         .retrieve()
                         .bodyToFlux(String.class)
                         .timeout(Duration.ofSeconds(timeoutSeconds))
-                        .reduce("", (accumulated, chunk) -> accumulated + chunk)  // 累积所有数据块
-                        .flatMapMany(this::parseGeminiStreamResponse)
+                        .concatMap(this::parseGeminiChunk)
+                        .doOnNext(chunk -> logger.debug("Gemini流式chunk: content={}", chunk.getContent()))
                         .doOnError(error -> logger.error("Gemini API调用失败: {}", error.getMessage()))
                         .onErrorResume(error -> {
                             UnifiedAiStreamChunk errorChunk = new UnifiedAiStreamChunk();
@@ -221,30 +221,66 @@ public class GeminiLlmProvider implements LlmProvider, InitializingBean {
         return requestBody;
     }
 
+    /**
+     * 逐个解析 Gemini 流式响应块
+     * Gemini streamGenerateContent 返回的是 JSON 数组的片段（以逗号分隔的对象）
+     */
+    private Flux<UnifiedAiStreamChunk> parseGeminiChunk(String rawChunk) {
+        try {
+            // Gemini 流式响应可能是数组片段，需要清理边界字符
+            String cleaned = rawChunk.trim();
+            if (cleaned.startsWith("[")) cleaned = cleaned.substring(1);
+            if (cleaned.endsWith("]")) cleaned = cleaned.substring(0, cleaned.length() - 1);
+            if (cleaned.startsWith(",")) cleaned = cleaned.substring(1);
+            if (cleaned.endsWith(",")) cleaned = cleaned.substring(0, cleaned.length() - 1);
+            cleaned = cleaned.trim();
+
+            if (cleaned.isEmpty()) {
+                return Flux.empty();
+            }
+
+            // 尝试解析为单个 JSON 对象
+            @SuppressWarnings("unchecked")
+            Map<String, Object> responseObj = objectMapper.readValue(cleaned, Map.class);
+            String textContent = extractTextFromResponse(responseObj);
+            if (textContent != null && !textContent.trim().isEmpty()) {
+                UnifiedAiStreamChunk chunk = new UnifiedAiStreamChunk();
+                chunk.setContent(textContent);
+                chunk.setIsFinal(isLastResponse(responseObj));
+                return Flux.just(chunk);
+            }
+            return Flux.empty();
+
+        } catch (Exception e) {
+            // 可能是不完整的 JSON 片段（跨边界），静默忽略
+            logger.debug("解析Gemini chunk失败（可能是片段边界）: {}", e.getMessage());
+            return Flux.empty();
+        }
+    }
+
     private Flux<UnifiedAiStreamChunk> parseGeminiStreamResponse(String completeJson) {
         try {
             logger.debug("开始解析Gemini流式响应，数据长度: {}", completeJson.length());
 
             List<UnifiedAiStreamChunk> chunks = new ArrayList<>();
-            String accumulatedContent = "";
+            StringBuilder accumulatedContent = new StringBuilder();
 
             // Gemini API 返回数组格式的多个响应块
             if (completeJson.startsWith("[")) {
                 @SuppressWarnings("unchecked")
                 List<Map<String, Object>> responseArray = objectMapper.readValue(completeJson, List.class);
 
-                for (Map<String, Object> responseObj : responseArray) {
+                for (int i = 0; i < responseArray.size(); i++) {
+                    Map<String, Object> responseObj = responseArray.get(i);
                     String textContent = extractTextFromResponse(responseObj);
                     if (textContent != null && !textContent.trim().isEmpty()) {
-                        accumulatedContent += textContent;
+                        accumulatedContent.append(textContent);
 
                         UnifiedAiStreamChunk chunk = new UnifiedAiStreamChunk();
                         chunk.setContent(textContent);
-                        chunk.setAccumulatedContent(accumulatedContent);
+                        chunk.setAccumulatedContent(accumulatedContent.toString());
 
-                        // 检查是否为最后一个响应
-                        boolean isLast = isLastResponse(responseObj) ||
-                            (responseArray.indexOf(responseObj) == responseArray.size() - 1);
+                        boolean isLast = isLastResponse(responseObj) || (i == responseArray.size() - 1);
                         chunk.setIsFinal(isLast);
 
                         chunks.add(chunk);

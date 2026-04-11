@@ -164,7 +164,7 @@ public class XunfeiStreamTtsClient implements TtsClient {
                 logger.error("科大讯飞WebSocket TTS合成失败", e);
                 throw new RuntimeException("TTS合成失败: " + e.getMessage(), e);
             }
-        });
+        }).subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic());
     }
 
     /**

@@ -184,6 +184,9 @@ public class SiliconFlowLlmProvider implements LlmProvider, InitializingBean {
 
                 logger.debug("发送硅基流动AI请求，模型: {}", model);
 
+                // 用 StringBuilder 追踪累积文本
+                StringBuilder accumulated = new StringBuilder();
+
                 return webClient
                         .post()
                         .uri("/chat/completions")
@@ -199,37 +202,22 @@ public class SiliconFlowLlmProvider implements LlmProvider, InitializingBean {
                             DataBufferUtils.release(dataBuffer);
                             return new String(bytes, StandardCharsets.UTF_8);
                         })
-                        .buffer(Duration.ofMillis(50)) // 减少缓冲时间，加快响应
-                        .flatMap(lines -> {
-                            String combined = String.join("", lines);
-                            return Flux.fromArray(combined.split("\n"))
+                        .concatMap(rawChunk -> {
+                            // 逐行解析 SSE
+                            return Flux.fromArray(rawChunk.split("\n"))
                                     .filter(line -> line.startsWith("data: ") && !line.equals("data: [DONE]"))
                                     .map(line -> line.substring(6).trim())
                                     .filter(data -> !data.isEmpty());
                         })
                         .timeout(Duration.ofSeconds(timeoutSeconds))
-                        .flatMap(this::parseSiliconFlowStreamChunk)
-                        .filter(chunk -> chunk.getContent() != null)  // 过滤null内容
-                        .filter(chunk -> !chunk.getContent().trim().isEmpty())  // 过滤空内容
-                        .filter(chunk -> !"null".equals(chunk.getContent()))  // 过滤字符串"null"
-                        .collectList() // 收集所有chunk
-                        .flatMapMany(chunks -> {
-                            // 手动处理累积内容
-                            StringBuilder accumulated = new StringBuilder();
-                            List<UnifiedAiStreamChunk> updatedChunks = new ArrayList<>();
-
-                            for (UnifiedAiStreamChunk chunk : chunks) {
-                                if (chunk.getContent() != null && !chunk.getContent().isEmpty()) {
-                                    accumulated.append(chunk.getContent());
-                                }
-                                chunk.setAccumulatedContent(accumulated.toString());
-                                updatedChunks.add(chunk);
-                            }
-
-                            logger.info("硅基流动AI响应解析完成，生成{}个chunk，总内容长度: {}",
-                                updatedChunks.size(), accumulated.length());
-
-                            return Flux.fromIterable(updatedChunks);
+                        .concatMap(this::parseSiliconFlowStreamChunk)
+                        .filter(chunk -> chunk.getContent() != null
+                                && !chunk.getContent().trim().isEmpty()
+                                && !"null".equals(chunk.getContent()))
+                        .doOnNext(chunk -> {
+                            // 真流式：逐个 chunk emit，增量计算 accumulatedContent
+                            accumulated.append(chunk.getContent());
+                            chunk.setAccumulatedContent(accumulated.toString());
                         })
                         .doOnError(error -> logger.error("硅基流动AI API调用失败: {}", error.getMessage()))
                         .onErrorResume(error -> {

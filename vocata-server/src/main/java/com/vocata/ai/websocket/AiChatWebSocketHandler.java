@@ -1,12 +1,24 @@
 package com.vocata.ai.websocket;
 
 import cn.dev33.satoken.stp.StpUtil;
+import com.vocata.ai.llm.LlmProvider;
+import com.vocata.ai.pipeline.PipelineEvent;
+import com.vocata.ai.pipeline.PipelineState;
+import com.vocata.ai.pipeline.StreamingPipelineOrchestrator;
+import com.vocata.ai.service.AiPromptEnhanceService;
 import com.vocata.ai.service.AiStreamingService;
+import com.vocata.ai.stt.SttClient;
+import com.vocata.ai.tts.TtsClient;
+import com.vocata.character.mapper.CharacterMapper;
+import com.vocata.character.service.CharacterChatCountService;
+import com.vocata.conversation.mapper.ConversationMapper;
+import com.vocata.conversation.mapper.MessageMapper;
 import com.vocata.conversation.service.ConversationService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.*;
 import org.springframework.web.socket.handler.BinaryWebSocketHandler;
@@ -14,77 +26,111 @@ import reactor.core.Disposable;
 import reactor.core.publisher.Sinks;
 
 import java.io.IOException;
-import java.util.HashMap;
 import java.util.Map;
-import java.util.UUID;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * AI语音对话WebSocket处理器
- * 完整实现 STT -> LLM -> TTS 处理链路
+ * 使用 StreamingPipelineOrchestrator 编排 STT → LLM → TTS 全链路
  *
- * Control/STT subset handled in this handler:
- * Client -> server
- * audio_start: initialize the current session stream context and begin downstream processing
- * binary audio frame: append one audio chunk to current session stream
- * audio_end: complete current audio stream
- * audio_cancel: abort current audio stream and discard partial session state
- * ping: keepalive control message
+ * Client → Server:
+ *   audio_start  : 开始录音，初始化音频流
+ *   binary frame : 音频数据块
+ *   audio_end    : 结束录音，触发处理管线
+ *   audio_cancel : 取消录音
+ *   text_message : 文字消息（跳过 STT）
+ *   barge_in     : 客户端检测到用户插话，请求打断
+ *   ping         : 心跳
  *
- * Server -> client
- * stt_result: incremental transcript, may be interim or final
- * status: connection / call lifecycle notices
- * error: protocol or processing failure
- * pong: emitted in response to ping
+ * Server → Client:
+ *   stt_result      : STT 中间/最终识别结果
+ *   llm_text_stream : LLM token 级文本流
+ *   sentence_audio  : 句子级 TTS 音频（JSON 元数据）
+ *   tts_audio_meta  : 音频元数据（二进制帧之前发送）
+ *   barge_in_ack    : 打断确认
+ *   pipeline_state  : 管线状态变更
+ *   status / error / complete / pong
  */
 @Component
 public class AiChatWebSocketHandler extends BinaryWebSocketHandler {
 
     private static final Logger logger = LoggerFactory.getLogger(AiChatWebSocketHandler.class);
 
-    @Autowired
-    private AiStreamingService aiStreamingService;
+    // ── 注入依赖（用于构建每个会话的 Orchestrator）──
+    @Autowired private LlmProvider llmProvider;
+    @Autowired private SttClient sttClient;
+    @Autowired private TtsClient ttsClient;
+    @Autowired private ConversationService conversationService;
+    @Autowired private ConversationMapper conversationMapper;
+    @Autowired private MessageMapper messageMapper;
+    @Autowired private CharacterMapper characterMapper;
+    @Autowired private CharacterChatCountService characterChatCountService;
+    @Autowired private AiPromptEnhanceService aiPromptEnhanceService;
+    @Autowired private AiStreamingService aiStreamingService;
 
-    @Autowired
-    private ConversationService conversationService;
+    @Value("${qiniu.ai.default-model:x-ai/grok-4-fast}")
+    private String defaultLlmModel;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    private static final class VoiceSessionState {
-        private final Sinks.Many<byte[]> audioSink;
-        private final Disposable processingDisposable;
+    // ── 每个 WebSocket 会话的状态 ──
+    private static final class SessionState {
+        final StreamingPipelineOrchestrator orchestrator;
+        volatile Sinks.Many<byte[]> audioSink;
+        volatile Disposable pipelineSubscription;
 
-        private VoiceSessionState(Sinks.Many<byte[]> audioSink, Disposable processingDisposable) {
-            this.audioSink = audioSink;
-            this.processingDisposable = processingDisposable;
+        SessionState(StreamingPipelineOrchestrator orchestrator) {
+            this.orchestrator = orchestrator;
         }
     }
 
-    // 存储每个会话的音频流及处理订阅
-    private final Map<String, VoiceSessionState> voiceSessions = new ConcurrentHashMap<>();
+    private final Map<String, SessionState> sessions = new ConcurrentHashMap<>();
+
+    // ═══════════════════════════════════════════════════════
+    //  连接生命周期
+    // ═══════════════════════════════════════════════════════
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
-        logger.info("AI语音WebSocket连接建立: {}", session.getId());
+        logger.info("WebSocket连接建立: {}", session.getId());
 
-        // 验证用户身份
         String authenticatedUserId = authenticateUser(session);
         if (authenticatedUserId == null) {
-            logger.error("WebSocket连接验证失败，关闭连接: {}", session.getId());
             session.close(CloseStatus.NOT_ACCEPTABLE.withReason("身份验证失败"));
             return;
         }
 
-        // 将认证的用户ID存储到session中
         session.getAttributes().put("authenticatedUserId", authenticatedUserId);
-        logger.info("WebSocket用户认证成功: {} - 用户ID: {}", session.getId(), authenticatedUserId);
 
-        session.sendMessage(new TextMessage(objectMapper.writeValueAsString(Map.of(
-                "type", "status",
-                "message", "WebSocket连接已建立",
-                "timestamp", System.currentTimeMillis()
-        ))));
+        // 为此会话创建专属 Orchestrator
+        StreamingPipelineOrchestrator orchestrator = new StreamingPipelineOrchestrator(
+                llmProvider, sttClient, ttsClient, conversationService,
+                conversationMapper, messageMapper, characterMapper,
+                characterChatCountService, aiPromptEnhanceService, defaultLlmModel);
+
+        sessions.put(session.getId(), new SessionState(orchestrator));
+
+        sendJson(session, Map.of("type", "status", "message", "WebSocket连接已建立",
+                "timestamp", System.currentTimeMillis()));
     }
+
+    @Override
+    public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
+        String sessionId = session.getId();
+        logger.info("WebSocket连接关闭: {}, 状态: {}", sessionId, status);
+        cleanupSession(sessionId);
+    }
+
+    @Override
+    public void handleTransportError(WebSocketSession session, Throwable exception) {
+        logger.error("WebSocket传输错误: {}", session.getId(), exception);
+        cleanupSession(session.getId());
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  消息分发
+    // ═══════════════════════════════════════════════════════
 
     @Override
     public void handleMessage(WebSocketSession session, WebSocketMessage<?> message) throws IOException {
@@ -94,68 +140,48 @@ public class AiChatWebSocketHandler extends BinaryWebSocketHandler {
             } else if (message instanceof TextMessage) {
                 handleTextMessage(session, (TextMessage) message);
             }
-        } catch (IOException e) {
-            logger.error("处理WebSocket消息失败: {}", e.getMessage(), e);
-            try {
-                sendErrorMessage(session, "消息处理失败: " + e.getMessage());
-            } catch (IOException ex) {
-                logger.error("发送错误消息失败", ex);
-            }
+        } catch (Exception e) {
+            logger.error("处理消息失败: {}", e.getMessage(), e);
+            sendJson(session, Map.of("type", "error", "error", e.getMessage(),
+                    "timestamp", System.currentTimeMillis()));
         }
     }
 
     @Override
-    protected void handleBinaryMessage(WebSocketSession session, BinaryMessage message) throws IOException {
-        String sessionId = session.getId();
-        byte[] audioData = message.getPayload().array();
-
-        logger.info("🎵 接收音频数据: {} bytes", audioData.length);
-
-        // binary audio frame: append one audio chunk to current session stream
-        VoiceSessionState voiceSession = voiceSessions.get(sessionId);
-        if (voiceSession != null) {
-            voiceSession.audioSink.tryEmitNext(audioData);
-            logger.info("🎵 音频数据已添加到流: {} bytes", audioData.length);
-        } else {
-            logger.warn("未找到会话的音频流: {}", sessionId);
+    protected void handleBinaryMessage(WebSocketSession session, BinaryMessage message) {
+        SessionState state = sessions.get(session.getId());
+        if (state != null && state.audioSink != null) {
+            byte[] audioData = message.getPayload().array();
+            state.audioSink.tryEmitNext(audioData);
+            logger.debug("音频数据已添加到流: {} bytes", audioData.length);
         }
     }
 
     @Override
+    @SuppressWarnings("unchecked")
     protected void handleTextMessage(WebSocketSession session, TextMessage message) {
         try {
-            logger.debug("收到文本消息: {}", message.getPayload());
-            @SuppressWarnings("unchecked")
             Map<String, Object> data = objectMapper.readValue(message.getPayload(), Map.class);
             String type = (String) data.get("type");
-            String sessionId = session.getId();
-
-            // Client -> server control messages are handled explicitly here.
-            if ("audio_start".equals(type) || "audio_end".equals(type) || "audio_cancel".equals(type) || "ping".equals(type)) {
-                logger.debug("收到控制指令: {}, 会话ID: {}", type, sessionId);
-            } else {
-                logger.info("解析消息类型: {}, 会话ID: {}", type, sessionId);
-            }
 
             switch (type) {
                 case "audio_start":
-                    // audio_start: initialize the current session stream context
                     handleAudioStart(session);
                     break;
                 case "audio_end":
-                    // audio_end: complete current audio stream and trigger downstream processing
-                    handleAudioEnd(session, data);
+                    handleAudioEnd(session);
                     break;
                 case "audio_cancel":
-                    // audio_cancel: abort current audio stream and discard partial session state
                     handleAudioCancel(session);
                     break;
                 case "text_message":
                     handleTextInput(session, data);
                     break;
+                case "barge_in":
+                    handleBargeIn(session);
+                    break;
                 case "ping":
-                    // ping: keepalive control message
-                    sendPongMessage(session);
+                    sendJson(session, Map.of("type", "pong", "timestamp", System.currentTimeMillis()));
                     break;
                 default:
                     logger.warn("未知消息类型: {}", type);
@@ -163,506 +189,343 @@ public class AiChatWebSocketHandler extends BinaryWebSocketHandler {
         } catch (Exception e) {
             logger.error("处理文本消息失败: {}", e.getMessage(), e);
             try {
-                sendErrorMessage(session, "消息处理失败: " + e.getMessage());
+                sendJson(session, Map.of("type", "error", "error", e.getMessage(),
+                        "timestamp", System.currentTimeMillis()));
             } catch (IOException ex) {
                 logger.error("发送错误消息失败", ex);
             }
         }
     }
 
-    private void handleAudioStart(WebSocketSession session) throws IOException {
-        String sessionId = session.getId();
-        logger.info("开始音频录制: {}", sessionId);
+    // ═══════════════════════════════════════════════════════
+    //  业务处理
+    // ═══════════════════════════════════════════════════════
 
-        if (voiceSessions.containsKey(sessionId)) {
-            logger.warn("重复启动音频录制，已有进行中的音频会话: {}", sessionId);
-            sendErrorMessage(session, "已有进行中的音频会话");
+    private void handleAudioStart(WebSocketSession session) throws IOException {
+        SessionState state = sessions.get(session.getId());
+        if (state == null) return;
+
+        if (state.orchestrator.getState() == PipelineState.SPEAKING
+                || state.orchestrator.getState() == PipelineState.PROCESSING) {
+            // 用户在 AI 说话时开始录音 → 触发 barge-in
+            handleBargeIn(session);
+        }
+
+        if (state.audioSink != null) {
+            sendJson(session, Map.of("type", "error", "error", "已有进行中的音频会话",
+                    "timestamp", System.currentTimeMillis()));
             return;
         }
 
         String conversationUuid = extractConversationUuid(session.getUri().toString());
-        String authenticatedUserId = (String) session.getAttributes().get("authenticatedUserId");
-        if (conversationUuid == null || authenticatedUserId == null) {
-            logger.warn("音频录制启动失败，缺少对话或用户上下文: sessionId={}", sessionId);
-            sendErrorMessage(session, "无法启动语音处理会话");
+        String userId = (String) session.getAttributes().get("authenticatedUserId");
+        if (conversationUuid == null || userId == null) {
+            sendJson(session, Map.of("type", "error", "error", "缺少对话或用户上下文",
+                    "timestamp", System.currentTimeMillis()));
             return;
         }
 
         Sinks.Many<byte[]> audioSink = Sinks.many().unicast().onBackpressureBuffer();
-        VoiceSessionState voiceSession = createVoiceSession(session, sessionId, conversationUuid, authenticatedUserId,
-                audioSink);
-        voiceSessions.put(sessionId, voiceSession);
-        if (voiceSession.processingDisposable.isDisposed()) {
-            voiceSessions.remove(sessionId, voiceSession);
-        }
+        state.audioSink = audioSink;
 
-        sendStatusMessage(session, "开始接收音频数据");
+        // 订阅语音管线
+        state.pipelineSubscription = state.orchestrator
+                .processVoiceMessage(conversationUuid, userId, audioSink.asFlux())
+                .doFinally(sig -> {
+                    state.audioSink = null;
+                    state.pipelineSubscription = null;
+                })
+                .subscribe(
+                        event -> dispatchEvent(session, event),
+                        error -> {
+                            logger.error("语音管线失败", error);
+                            sendJsonSafe(session, Map.of("type", "error",
+                                    "error", error.getMessage(),
+                                    "timestamp", System.currentTimeMillis()));
+                        }
+                );
+
+        sendJson(session, Map.of("type", "status", "message", "开始接收音频数据",
+                "timestamp", System.currentTimeMillis()));
     }
 
-    private void handleAudioEnd(WebSocketSession session, Map<String, Object> data) throws IOException {
-        String sessionId = session.getId();
-        logger.info("结束音频录制: {}", sessionId);
-
-        VoiceSessionState voiceSession = voiceSessions.get(sessionId);
-        if (voiceSession != null) {
-            voiceSession.audioSink.tryEmitComplete();
-        } else {
-            sendErrorMessage(session, "未找到音频流");
+    private void handleAudioEnd(WebSocketSession session) {
+        SessionState state = sessions.get(session.getId());
+        if (state != null && state.audioSink != null) {
+            state.audioSink.tryEmitComplete();
         }
     }
 
     private void handleAudioCancel(WebSocketSession session) throws IOException {
-        String sessionId = session.getId();
-        logger.info("取消音频录制: {}", sessionId);
-
-        closeVoiceSession(sessionId);
-
-        if (session.isOpen()) {
-            sendStatusMessage(session, "录音已取消");
-        }
-    }
-
-    private VoiceSessionState createVoiceSession(WebSocketSession session,
-                                                 String sessionId,
-                                                 String conversationUuid,
-                                                 String authenticatedUserId,
-                                                 Sinks.Many<byte[]> audioSink) {
-        logger.info("🎤【完整AI处理】音频录制开始，启动STT->LLM->TTS处理 - 会话: {}, 用户: {}",
-                conversationUuid, authenticatedUserId);
-
-        final VoiceSessionState[] stateHolder = new VoiceSessionState[1];
-        Disposable processingDisposable = aiStreamingService
-                .processVoiceMessage(conversationUuid, authenticatedUserId, audioSink.asFlux())
-                .doFinally(signalType -> {
-                    VoiceSessionState currentState = stateHolder[0];
-                    if (currentState != null) {
-                        voiceSessions.remove(sessionId, currentState);
-                    }
-                })
-                .subscribe(
-                        response -> handleVoiceResponse(session, response),
-                        error -> {
-                            logger.error("处理语音消息失败", error);
-                            try {
-                                sendErrorMessage(session, "语音处理失败: " + error.getMessage());
-                            } catch (IOException e) {
-                                logger.error("发送错误消息失败", e);
-                            }
-                        },
-                        () -> {
-                            logger.info("语音消息处理完成: {}", sessionId);
-                            try {
-                                sendStatusMessage(session, "语音处理完成");
-                            } catch (IOException e) {
-                                logger.error("发送完成消息失败", e);
-                            }
-                        }
-                );
-
-        VoiceSessionState voiceSession = new VoiceSessionState(audioSink, processingDisposable);
-        stateHolder[0] = voiceSession;
-        return voiceSession;
-    }
-
-    private void handleVoiceResponse(WebSocketSession session, Map<String, Object> response) {
-        try {
-            String responseType = (String) response.get("type");
-
-            if ("stt_result".equals(responseType)) {
-                @SuppressWarnings("unchecked")
-                Map<String, Object> payload = (Map<String, Object>) response.get("payload");
-                if (payload != null) {
-                    sendSttResultFromPayload(session, payload);
-                }
-            } else if ("llm_chunk".equals(responseType)) {
-                @SuppressWarnings("unchecked")
-                Map<String, Object> payload = (Map<String, Object>) response.get("payload");
-                if (payload != null) {
-                    String text = (String) payload.get("text");
-                    Boolean isFinal = (Boolean) payload.get("is_final");
-                    sendLlmTextStream(session, text != null ? text : "", isFinal != null && isFinal);
-                }
-            } else if ("audio_chunk".equals(responseType)) {
-                byte[] audioData = (byte[]) response.get("audio_data");
-                if (audioData != null) {
-                    sendTtsAudioStream(session, audioData);
-                }
-            } else if ("tts_result".equals(responseType)) {
-                @SuppressWarnings("unchecked")
-                Map<String, Object> ttsPayload = (Map<String, Object>) response.get("tts_result");
-                if (ttsPayload != null) {
-                    byte[] audioData = (byte[]) ttsPayload.get("audioData");
-                    String correspondingText = (String) ttsPayload.get("correspondingText");
-                    Object audioFormatObj = ttsPayload.get("audioFormat");
-                    String audioFormat = audioFormatObj instanceof String ? (String) audioFormatObj : "mp3";
-                    Object sampleRateObj = ttsPayload.get("sampleRate");
-                    int sampleRate = sampleRateObj instanceof Number ? ((Number) sampleRateObj).intValue() : 24000;
-                    String voiceId = ttsPayload.get("voiceId") instanceof String ?
-                            (String) ttsPayload.get("voiceId") : null;
-
-                    Map<String, Object> ttsResultMessage = new HashMap<>();
-                    ttsResultMessage.put("type", "tts_result");
-                    ttsResultMessage.put("text", correspondingText != null ? correspondingText : "");
-                    ttsResultMessage.put("format", audioFormat);
-                    ttsResultMessage.put("sampleRate", sampleRate);
-                    if (voiceId != null) {
-                        ttsResultMessage.put("voiceId", voiceId);
-                    }
-                    ttsResultMessage.put("timestamp", System.currentTimeMillis());
-
-                    session.sendMessage(new TextMessage(objectMapper.writeValueAsString(ttsResultMessage)));
-
-                    if (audioData != null && audioData.length > 0) {
-                        sendTtsAudioStream(session, audioData);
-                    } else {
-                        logger.warn("【TTS阶段】TTS结果缺少音频数据");
-                    }
-                }
-            } else if ("complete".equals(responseType)) {
-                sendStatusMessage(session, "语音处理完成");
+        SessionState state = sessions.get(session.getId());
+        if (state != null) {
+            if (state.audioSink != null) {
+                state.audioSink.tryEmitComplete();
+                state.audioSink = null;
             }
-        } catch (IOException e) {
-            logger.error("发送响应失败", e);
-        }
-    }
-
-    private void closeVoiceSession(String sessionId) {
-        VoiceSessionState voiceSession = voiceSessions.remove(sessionId);
-        if (voiceSession == null) {
-            return;
-        }
-
-        voiceSession.audioSink.tryEmitComplete();
-        if (!voiceSession.processingDisposable.isDisposed()) {
-            voiceSession.processingDisposable.dispose();
-        }
-    }
-
-    /**
-     * 发送STT识别结果（从payload中提取）
-     */
-    private void sendSttResultFromPayload(WebSocketSession session, Map<String, Object> payload) {
-        try {
-            session.sendMessage(new TextMessage(objectMapper.writeValueAsString(Map.of(
-                    "type", "stt_result",
-                    "text", payload.getOrDefault("text", ""),
-                    "isFinal", payload.getOrDefault("is_final", false),
-                    "confidence", payload.getOrDefault("confidence", 0.0),
-                    "timestamp", System.currentTimeMillis()
-            ))));
-        } catch (IOException e) {
-            logger.error("发送STT结果失败", e);
-        }
-    }
-
-    /**
-     * 发送LLM文本流 - 确保流式响应
-     */
-    private void sendLlmTextStream(WebSocketSession session, String content, boolean isComplete) {
-        try {
-            session.sendMessage(new TextMessage(objectMapper.writeValueAsString(Map.of(
-                    "type", "llm_text_stream",
-                    "text", content,
-                    "characterName", "AI助手",
-                    "isComplete", isComplete,
-                    "timestamp", System.currentTimeMillis()
-            ))));
-        } catch (IOException e) {
-            logger.error("发送LLM文本流失败", e);
-        }
-    }
-
-    /**
-     * 发送TTS音频流 - 使用二进制分片传输避免64KB限制
-     */
-    private void sendTtsAudioStream(WebSocketSession session, byte[] audioData) {
-        try {
-            if (!session.isOpen()) {
-                logger.warn("会话已关闭，跳过发送TTS音频数据");
-                return;
+            if (state.pipelineSubscription != null && !state.pipelineSubscription.isDisposed()) {
+                state.pipelineSubscription.dispose();
+                state.pipelineSubscription = null;
             }
-            logger.info("【TTS输出】发送音频数据到前端 - 大小: {} bytes", audioData.length);
-
-            // 先发送音频元数据（JSON格式）
-            Map<String, Object> audioMeta = Map.of(
-                    "type", "tts_audio_meta",
-                    "audioSize", audioData.length,
-                    "format", "mp3",
-                    "sampleRate", 24000,
-                    "channels", 1,
-                    "bitDepth", 16,
-                    "timestamp", System.currentTimeMillis()
-            );
-            String audioMetaJson = objectMapper.writeValueAsString(audioMeta);
-            logger.info("【TTS输出】发送音频元数据: {}", audioMetaJson);
-            session.sendMessage(new TextMessage(audioMetaJson));
-
-            // 检查音频数据大小，如果超过32KB则分片传输，避免客户端因单帧过大触发协议错误
-            final int MAX_CHUNK_SIZE = 32 * 1024; // 32KB每片，更好的兼容性
-
-            if (audioData.length <= MAX_CHUNK_SIZE) {
-                // 小于50KB，直接发送二进制消息
-                session.sendMessage(new BinaryMessage(audioData));
-                logger.info("【TTS输出】音频数据一次性发送完成 - {} bytes", audioData.length);
-            } else {
-                // 大于50KB，分片发送
-                int totalChunks = (int) Math.ceil((double) audioData.length / MAX_CHUNK_SIZE);
-                logger.info("【TTS输出】音频数据过大，分{}片发送 - 总大小: {} bytes", totalChunks, audioData.length);
-
-                for (int i = 0; i < totalChunks; i++) {
-                    int start = i * MAX_CHUNK_SIZE;
-                    int end = Math.min(start + MAX_CHUNK_SIZE, audioData.length);
-                    byte[] chunk = java.util.Arrays.copyOfRange(audioData, start, end);
-
-                    // 发送分片数据
-                    session.sendMessage(new BinaryMessage(chunk));
-                    logger.info("【TTS输出】发送音频分片 {}/{} - {} bytes", i + 1, totalChunks, chunk.length);
-
-                    // 分片间短暂延迟，避免网络拥塞
-                    Thread.sleep(10);
-                }
-                logger.info("【TTS输出】音频分片发送完成 - 共{}片", totalChunks);
-            }
-
-        } catch (Exception e) {
-            logger.error("【TTS输出】发送TTS音频流失败", e);
         }
+        sendJson(session, Map.of("type", "status", "message", "录音已取消",
+                "timestamp", System.currentTimeMillis()));
     }
 
-    /**
-     * 处理文字输入消息
-     * 用户可以发送文字消息，AI将返回双重响应（文字+语音）
-     */
+    @SuppressWarnings("unchecked")
     private void handleTextInput(WebSocketSession session, Map<String, Object> data) throws IOException {
-        @SuppressWarnings("unchecked")
         Map<String, Object> messageData = (Map<String, Object>) data.get("data");
-
         if (messageData == null) {
-            sendErrorMessage(session, "缺少data字段");
+            sendJson(session, Map.of("type", "error", "error", "缺少data字段",
+                    "timestamp", System.currentTimeMillis()));
             return;
         }
 
         String text = (String) messageData.get("message");
         if (text == null || text.trim().isEmpty()) {
-            sendErrorMessage(session, "文字内容不能为空");
+            sendJson(session, Map.of("type", "error", "error", "文字内容不能为空",
+                    "timestamp", System.currentTimeMillis()));
             return;
         }
 
-        // 从URI中提取对话UUID
-        String uri = session.getUri().toString();
-        String conversationUuidStr = extractConversationUuid(uri);
-
-        if (conversationUuidStr == null) {
-            sendErrorMessage(session, "无效的请求URI，缺少对话UUID");
+        String conversationUuid = extractConversationUuid(session.getUri().toString());
+        String userId = (String) session.getAttributes().get("authenticatedUserId");
+        if (conversationUuid == null || userId == null) {
+            sendJson(session, Map.of("type", "error", "error", "缺少对话或用户上下文",
+                    "timestamp", System.currentTimeMillis()));
             return;
         }
 
-        // 使用认证的用户ID，不信任URL参数
-        String authenticatedUserId = (String) session.getAttributes().get("authenticatedUserId");
-        if (authenticatedUserId == null) {
-            sendErrorMessage(session, "用户身份验证失败");
-            return;
+        SessionState state = sessions.get(session.getId());
+        if (state == null) return;
+
+        logger.info("文字输入处理: 会话={}, 用户={}", conversationUuid, userId);
+
+        state.pipelineSubscription = state.orchestrator
+                .processTextMessage(conversationUuid, userId, text)
+                .doFinally(sig -> state.pipelineSubscription = null)
+                .subscribe(
+                        event -> dispatchEvent(session, event),
+                        error -> {
+                            logger.error("文字管线失败", error);
+                            sendJsonSafe(session, Map.of("type", "error",
+                                    "error", error.getMessage(),
+                                    "timestamp", System.currentTimeMillis()));
+                        }
+                );
+    }
+
+    private void handleBargeIn(WebSocketSession session) throws IOException {
+        SessionState state = sessions.get(session.getId());
+        if (state == null) return;
+
+        Optional<PipelineEvent.BargeInAck> ack = state.orchestrator.bargeIn();
+        if (ack.isPresent()) {
+            // 取消订阅
+            if (state.pipelineSubscription != null && !state.pipelineSubscription.isDisposed()) {
+                state.pipelineSubscription.dispose();
+                state.pipelineSubscription = null;
+            }
+            if (state.audioSink != null) {
+                state.audioSink.tryEmitComplete();
+                state.audioSink = null;
+            }
+
+            logger.info("Barge-in 执行成功，截断文本长度: {}", ack.get().getTruncatedText().length());
+            dispatchEvent(session, ack.get());
         }
+    }
 
-        logger.info("【文字输入处理】开始处理 - 会话UUID: {}, 认证用户: {}, 文字内容: '{}'",
-                conversationUuidStr, authenticatedUserId, text);
+    // ═══════════════════════════════════════════════════════
+    //  PipelineEvent → WebSocket 消息
+    // ═══════════════════════════════════════════════════════
 
+    private void dispatchEvent(WebSocketSession session, PipelineEvent event) {
         try {
-            // 完整AI模式: 文本消息 -> LLM -> TTS
-            aiStreamingService.processTextMessage(conversationUuidStr, authenticatedUserId, text)
-                    .subscribe(
-                            response -> {
-                                try {
-                                    String responseType = (String) response.get("type");
-                                    logger.info("【WebSocket响应】收到响应类型: {}", responseType);
+            if (!session.isOpen()) return;
 
-                                    if ("text_chunk".equals(responseType)) {
-                                        @SuppressWarnings("unchecked")
-                                        Map<String, Object> payload = (Map<String, Object>) response.get("payload");
-                                        if (payload != null) {
-                                            String responseText = (String) payload.get("text");
-                                            Boolean isFinal = (Boolean) payload.get("is_final");
+            if (event instanceof PipelineEvent.SttResult e) {
+                sendJson(session, Map.of(
+                        "type", "stt_result",
+                        "text", e.getText(),
+                        "isFinal", e.isFinal(),
+                        "confidence", e.getConfidence(),
+                        "timestamp", e.getTimestamp()
+                ));
 
-                                            logger.info("【LLM阶段】流式文本响应 - 内容: '{}', 是否完整: {}",
-                                                    responseText, isFinal);
+            } else if (event instanceof PipelineEvent.LlmTextChunk e) {
+                sendJson(session, Map.of(
+                        "type", "llm_text_stream",
+                        "text", e.getText(),
+                        "accumulatedText", e.getAccumulatedText() != null ? e.getAccumulatedText() : "",
+                        "characterName", e.getCharacterName(),
+                        "isComplete", e.isComplete(),
+                        "timestamp", e.getTimestamp()
+                ));
 
-                                            // 发送流式文本响应
-                                            sendLlmTextStream(session, responseText != null ? responseText : "",
-                                                    isFinal != null && isFinal);
-                                        }
+            } else if (event instanceof PipelineEvent.SentenceAudio e) {
+                // 先发句子音频元数据
+                sendJson(session, Map.of(
+                        "type", "sentence_audio",
+                        "text", e.getCorrespondingText(),
+                        "sentenceIndex", e.getSentenceIndex(),
+                        "audioSize", e.getAudioData().length,
+                        "format", e.getAudioFormat(),
+                        "sampleRate", e.getSampleRate(),
+                        "timestamp", e.getTimestamp()
+                ));
+                // 再发二进制音频数据
+                sendAudioBinary(session, e.getAudioData());
 
-                                    } else if ("audio_chunk".equals(responseType)) {
-                                        byte[] audioData = (byte[]) response.get("audio_data");
-                                        if (audioData != null) {
-                                            logger.info("【TTS阶段】收到音频块，大小: {} bytes", audioData.length);
+            } else if (event instanceof PipelineEvent.AudioMeta e) {
+                sendJson(session, Map.of(
+                        "type", "tts_audio_meta",
+                        "audioSize", e.getAudioSize(),
+                        "format", e.getFormat(),
+                        "sampleRate", e.getSampleRate(),
+                        "timestamp", e.getTimestamp()
+                ));
 
-                                            // 发送语音响应
-                                            sendTtsAudioStream(session, audioData);
-                                        }
+            } else if (event instanceof PipelineEvent.BargeInAck e) {
+                sendJson(session, Map.of(
+                        "type", "barge_in_ack",
+                        "truncatedText", e.getTruncatedText(),
+                        "timestamp", e.getTimestamp()
+                ));
 
-                                    } else if ("audio_complete".equals(responseType)) {
-                                        logger.info("【TTS阶段】音频合成完成");
-                                        // 可以发送音频完成标志
-                                        sendStatusMessage(session, "音频合成完成");
+            } else if (event instanceof PipelineEvent.StateChange e) {
+                sendJson(session, Map.of(
+                        "type", "pipeline_state",
+                        "state", e.getState().name(),
+                        "timestamp", e.getTimestamp()
+                ));
 
-                                    } else if ("complete".equals(responseType)) {
-                                        logger.info("【处理完成】文字消息处理链路完成");
-                                        sendStatusMessage(session, "处理完成");
+            } else if (event instanceof PipelineEvent.Status e) {
+                sendJson(session, Map.of(
+                        "type", "status",
+                        "message", e.getMessage(),
+                        "timestamp", e.getTimestamp()
+                ));
 
-                                    } else if ("error".equals(responseType)) {
-                                        String errorMessage = (String) response.get("error");
-                                        if (errorMessage == null) {
-                                            errorMessage = (String) response.get("message");
-                                        }
-                                        logger.error("【处理错误】: {}", errorMessage);
-                                        sendErrorMessage(session, errorMessage != null ? errorMessage : "处理失败");
-                                    }
+            } else if (event instanceof PipelineEvent.Complete) {
+                sendJson(session, Map.of(
+                        "type", "complete",
+                        "message", "处理完成",
+                        "timestamp", event.getTimestamp()
+                ));
 
-                                } catch (Exception e) {
-                                    logger.error("【响应处理错误】: {}", e.getMessage(), e);
-                                    try {
-                                        sendErrorMessage(session, "响应处理失败");
-                                    } catch (IOException ex) {
-                                        logger.error("发送错误消息失败", ex);
-                                    }
-                                }
-                            },
-                            error -> {
-                                logger.error("【文字消息处理失败】: {}", error.getMessage(), error);
-                                try {
-                                    sendErrorMessage(session, "文字消息处理失败: " + error.getMessage());
-                                } catch (IOException ex) {
-                                    logger.error("发送错误消息失败", ex);
-                                }
-                            }
-                    );
-
-        } catch (Exception e) {
-            logger.error("【参数错误】UUID或用户ID格式错误: conversationUuid={}, userId={}", 
-                        conversationUuidStr, authenticatedUserId);
-            sendErrorMessage(session, "参数格式错误");
+            } else if (event instanceof PipelineEvent.Error e) {
+                sendJson(session, Map.of(
+                        "type", "error",
+                        "error", e.getError(),
+                        "timestamp", e.getTimestamp()
+                ));
+            }
+        } catch (IOException e) {
+            logger.error("发送事件失败: {}", event.getType(), e);
         }
     }
 
-    private void sendStatusMessage(WebSocketSession session, String message) throws IOException {
-        if (!session.isOpen()) {
-            logger.warn("会话已关闭，无法发送状态消息: {}", message);
-            return;
+    // ═══════════════════════════════════════════════════════
+    //  工具方法
+    // ═══════════════════════════════════════════════════════
+
+    private void sendJson(WebSocketSession session, Map<String, Object> data) throws IOException {
+        if (!session.isOpen()) return;
+        session.sendMessage(new TextMessage(objectMapper.writeValueAsString(data)));
+    }
+
+    private void sendJsonSafe(WebSocketSession session, Map<String, Object> data) {
+        try {
+            sendJson(session, data);
+        } catch (IOException e) {
+            logger.error("发送JSON失败", e);
         }
-        session.sendMessage(new TextMessage(objectMapper.writeValueAsString(Map.of(
-                "type", "status",
-                "message", message,
-                "timestamp", System.currentTimeMillis()
-        ))));
     }
 
-    private void sendErrorMessage(WebSocketSession session, String error) throws IOException {
-        if (!session.isOpen()) {
-            logger.warn("会话已关闭，无法发送错误消息: {}", error);
-            return;
+    private void sendAudioBinary(WebSocketSession session, byte[] audioData) throws IOException {
+        if (!session.isOpen() || audioData == null || audioData.length == 0) return;
+
+        final int MAX_CHUNK_SIZE = 32 * 1024;
+        if (audioData.length <= MAX_CHUNK_SIZE) {
+            session.sendMessage(new BinaryMessage(audioData));
+        } else {
+            int totalChunks = (int) Math.ceil((double) audioData.length / MAX_CHUNK_SIZE);
+            for (int i = 0; i < totalChunks; i++) {
+                int start = i * MAX_CHUNK_SIZE;
+                int end = Math.min(start + MAX_CHUNK_SIZE, audioData.length);
+                byte[] chunk = java.util.Arrays.copyOfRange(audioData, start, end);
+                session.sendMessage(new BinaryMessage(chunk));
+            }
         }
-        session.sendMessage(new TextMessage(objectMapper.writeValueAsString(Map.of(
-                "type", "error",
-                "error", error,
-                "timestamp", System.currentTimeMillis()
-        ))));
     }
 
-    private void sendPongMessage(WebSocketSession session) throws IOException {
-        session.sendMessage(new TextMessage(objectMapper.writeValueAsString(Map.of(
-                "type", "pong",
-                "timestamp", System.currentTimeMillis()
-        ))));
+    private void cleanupSession(String sessionId) {
+        SessionState state = sessions.remove(sessionId);
+        if (state == null) return;
+
+        state.orchestrator.dispose();
+        if (state.audioSink != null) {
+            state.audioSink.tryEmitComplete();
+        }
+        if (state.pipelineSubscription != null && !state.pipelineSubscription.isDisposed()) {
+            state.pipelineSubscription.dispose();
+        }
     }
 
-    /**
-     * 验证WebSocket用户身份
-     */
     private String authenticateUser(WebSocketSession session) {
         try {
-            // 尝试从URL参数中获取token
             String uri = session.getUri().toString();
-            logger.info("【认证调试】WebSocket URI: {}", uri);
             String token = null;
 
             if (uri.contains("token=")) {
                 String query = uri.split("\\?")[1];
-                logger.info("【认证调试】查询参数: {}", query);
                 String[] params = query.split("&");
                 for (String param : params) {
-                    logger.info("【认证调试】处理参数: {}", param);
                     if (param.startsWith("token=")) {
                         token = param.substring("token=".length());
-                        // URL解码token
                         token = java.net.URLDecoder.decode(token, "UTF-8");
-                        logger.info("【认证调试】从URL参数提取token: {}...", 
-                                   token.substring(0, Math.min(token.length(), 20)));
                         break;
                     }
                 }
             }
 
-            // 如果URL参数中没有token，尝试从handshake headers中获取
             if (token == null) {
-                logger.info("【认证调试】URL参数中未找到token，尝试从headers获取");
                 token = session.getHandshakeHeaders().getFirst("Authorization");
                 if (token != null && token.startsWith("Bearer ")) {
                     token = token.substring(7);
-                    logger.info("【认证调试】从Authorization header提取token: {}...", 
-                               token.substring(0, Math.min(token.length(), 20)));
                 }
             }
 
             if (token == null) {
-                logger.error("【认证失败】WebSocket连接缺少认证token");
+                logger.error("WebSocket连接缺少认证token");
                 return null;
             }
 
-            // 使用Sa-Token验证token
-            logger.info("【认证调试】开始验证token...");
             Object loginId = StpUtil.getLoginIdByToken(token);
             if (loginId == null) {
-                logger.error("【认证失败】无效的WebSocket认证token: {}...", 
-                            token.substring(0, Math.min(token.length(), 20)));
+                logger.error("无效的WebSocket认证token");
                 return null;
             }
 
-            logger.info("【认证成功】用户ID: {}", loginId);
+            logger.info("WebSocket认证成功，用户ID: {}", loginId);
             return loginId.toString();
         } catch (Exception e) {
-            logger.error("【认证异常】WebSocket用户认证异常", e);
+            logger.error("WebSocket用户认证异常", e);
             return null;
         }
     }
 
     private String extractConversationUuid(String uri) {
-        // 从URI中提取对话标识符: /ws/chat/{conversation_uuid}?userId=1
         try {
-            String path = uri.split("\\?")[0]; // 去掉查询参数
+            String path = uri.split("\\?")[0];
             String[] parts = path.split("/");
             if (parts.length >= 3 && "chat".equals(parts[parts.length - 2])) {
-                return parts[parts.length - 1]; // conversation_uuid
+                return parts[parts.length - 1];
             }
         } catch (Exception e) {
             logger.error("提取对话UUID失败: {}", uri, e);
         }
         return null;
-    }
-
-    @Override
-    public void afterConnectionClosed(WebSocketSession session, CloseStatus status) throws IOException {
-        String sessionId = session.getId();
-        logger.info("AI语音WebSocket连接关闭: {}, 状态: {}", sessionId, status);
-
-        // 清理资源
-        closeVoiceSession(sessionId);
-    }
-
-    @Override
-    public void handleTransportError(WebSocketSession session, Throwable exception) throws IOException {
-        logger.error("WebSocket传输错误: {}", session.getId(), exception);
-
-        // 清理资源
-        closeVoiceSession(session.getId());
     }
 }

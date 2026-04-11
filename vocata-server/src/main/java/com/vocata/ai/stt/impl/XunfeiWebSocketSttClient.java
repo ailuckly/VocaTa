@@ -118,18 +118,8 @@ public class XunfeiWebSocketSttClient implements SttClient {
                             SttResult result = parseWebSocketResponse(response, config);
 
                             if (result != null && StringUtils.hasText(result.getText())) {
-                                // 输出到控制台
-                                System.out.println("========================================");
-                                System.out.println("🎤 科大讯飞WebSocket STT识别结果:");
-                                System.out.println("📝 识别文字: " + result.getText());
-                                System.out.println("📊 置信度: " + String.format("%.2f", result.getConfidence()));
-                                System.out.println("✅ 是否最终: " + (result.isFinal() ? "是" : "否"));
-                                System.out.println("🌐 语言: " + config.getLanguage());
-                                System.out.println("⏰ 时间: " + java.time.LocalDateTime.now());
-                                System.out.println("========================================");
-
-                                logger.info("🎤【科大讯飞WebSocket STT识别】文字: '{}', 置信度: {}",
-                                           result.getText(), result.getConfidence());
+                                logger.info("【科大讯飞WebSocket STT识别】文字: '{}', 置信度: {}, 最终: {}, 语言: {}",
+                                           result.getText(), result.getConfidence(), result.isFinal(), config.getLanguage());
 
                                 sink.next(result);
                             }
@@ -200,14 +190,21 @@ public class XunfeiWebSocketSttClient implements SttClient {
                             Map<String, Object> endFrame = buildAudioFrame(new byte[0], config, 2);
                             String endFrameJson = objectMapper.writeValueAsString(endFrame);
 
-                            logger.info("🎤【科大讯飞WebSocket STT】发送结束帧");
+                            logger.info("【科大讯飞WebSocket STT】发送结束帧");
                             webSocket.sendText(endFrameJson, true);
 
-                            // 延迟关闭连接，等待最后的识别结果
-                            Thread.sleep(1000);
-                            webSocket.sendClose(WebSocket.NORMAL_CLOSURE, "Audio stream completed");
+                            // 使用 CompletableFuture 延迟关闭，避免阻塞 Reactor 线程
+                            java.util.concurrent.CompletableFuture.delayedExecutor(
+                                    1, java.util.concurrent.TimeUnit.SECONDS)
+                                .execute(() -> {
+                                    try {
+                                        webSocket.sendClose(WebSocket.NORMAL_CLOSURE, "Audio stream completed");
+                                    } catch (Exception ex) {
+                                        logger.debug("关闭WebSocket连接时出错（可能已关闭）", ex);
+                                    }
+                                });
                         } catch (Exception e) {
-                            logger.error("🎤【科大讯飞WebSocket STT】发送结束帧失败", e);
+                            logger.error("【科大讯飞WebSocket STT】发送结束帧失败", e);
                             webSocket.sendClose(WebSocket.NORMAL_CLOSURE, "End frame error");
                         }
                     }
