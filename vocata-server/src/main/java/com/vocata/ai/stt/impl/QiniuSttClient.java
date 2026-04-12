@@ -232,6 +232,7 @@ public class QiniuSttClient implements SttClient {
                 logger.info("音频文件上传成功，URL: {}", uploadResponse.getFileUrl());
                 return new UploadedAudioContext(format, uploadResponse.getFileUrl());
             })
+            .subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic())
             .onErrorMap(e -> {
                 logger.error("上传音频文件失败", e);
                 return new RuntimeException("上传音频文件到七牛云存储失败: " + e.getMessage(), e);
@@ -451,66 +452,94 @@ public class QiniuSttClient implements SttClient {
      */
     private SttClient.SttResult parseAsrResponse(Map<String, Object> response, SttClient.SttConfig config) {
         SttClient.SttResult result = new SttClient.SttResult();
-
-        try {
-            logger.info("解析七牛云ASR响应: {}", response);
-
-            // 检查是否有错误
-            if (response.containsKey("error")) {
-                String errorMessage = (String) response.get("error");
-                result.setText("识别失败: " + errorMessage);
-                result.setConfidence(0.0);
-                logger.error("七牛云ASR API错误: {}", errorMessage);
-            } else if (response.containsKey("data")) {
-                // 成功响应 - 根据官方文档格式
-                @SuppressWarnings("unchecked")
-                Map<String, Object> data = (Map<String, Object>) response.get("data");
-
-                if (data != null && data.containsKey("result")) {
-                    @SuppressWarnings("unchecked")
-                    Map<String, Object> resultData = (Map<String, Object>) data.get("result");
-
-                    if (resultData != null && resultData.containsKey("text")) {
-                        String text = (String) resultData.get("text");
-                        result.setText(StringUtils.hasText(text) ? text : "");
-                        result.setConfidence(0.95); // 七牛云默认高置信度
-                        logger.info("七牛云ASR识别成功: '{}'", text);
-                    } else {
-                        result.setText("");
-                        result.setConfidence(0.0);
-                        logger.warn("七牛云ASR响应中没有找到text字段");
-                    }
-                } else {
-                    result.setText("");
-                    result.setConfidence(0.0);
-                    logger.warn("七牛云ASR响应中没有找到result字段");
-                }
-            } else {
-                // 处理其他可能的响应格式
-                result.setText("无法解析识别结果");
-                result.setConfidence(0.0);
-                logger.warn("七牛云ASR响应格式不匹配: {}", response);
-            }
-
-        } catch (Exception e) {
-            logger.error("解析七牛云ASR响应失败", e);
-            result.setText("解析识别结果失败");
-            result.setConfidence(0.0);
-        }
-
-        result.setFinal(true);
-
-        // 设置元数据
         Map<String, Object> metadata = new HashMap<>();
         metadata.put("provider", "QiniuSTT");
         metadata.put("model", getModelForLanguage(config.getLanguage()));
         metadata.put("language", config.getLanguage());
         metadata.put("endpoint", endpoint);
+
+        try {
+            logger.info("解析七牛云ASR响应: {}", response);
+
+            // 检查顶层错误字段 ({"error": "..."} 或 {"error": {...}})
+            if (response.containsKey("error") && response.get("error") != null) {
+                String errorMessage = response.get("error").toString();
+                logger.error("七牛云ASR API错误: {}", errorMessage);
+                metadata.put("error", errorMessage);
+                result.setText("");
+                result.setConfidence(0.0);
+            } else if (response.containsKey("data")) {
+                // 成功响应 - 尝试多种格式
+                @SuppressWarnings("unchecked")
+                Map<String, Object> data = (Map<String, Object>) response.get("data");
+                String text = extractTextFromData(data);
+                if (text != null) {
+                    result.setText(text);
+                    result.setConfidence(0.95);
+                    logger.info("七牛云ASR识别成功: '{}'", text);
+                } else {
+                    logger.warn("七牛云ASR响应data中未找到识别文本: {}", data);
+                    result.setText("");
+                    result.setConfidence(0.0);
+                }
+            } else if (response.containsKey("text")) {
+                // 直接顶层 text 字段
+                String text = (String) response.get("text");
+                result.setText(StringUtils.hasText(text) ? text : "");
+                result.setConfidence(0.95);
+                logger.info("七牛云ASR识别成功(顶层text): '{}'", text);
+            } else {
+                logger.warn("七牛云ASR响应格式未知: {}", response);
+                metadata.put("error", "unknown_response_format: " + response);
+                result.setText("");
+                result.setConfidence(0.0);
+            }
+
+        } catch (Exception e) {
+            logger.error("解析七牛云ASR响应失败", e);
+            metadata.put("error", e.getMessage());
+            result.setText("");
+            result.setConfidence(0.0);
+        }
+
+        result.setFinal(true);
         result.setMetadata(metadata);
 
         logger.info("七牛云ASR识别完成: 文本长度={}, 置信度={}",
-                   result.getText().length(), result.getConfidence());
+                   result.getText() == null ? 0 : result.getText().length(), result.getConfidence());
 
         return result;
+    }
+
+    /** 从不同格式的 data 对象中提取识别文本 */
+    @SuppressWarnings("unchecked")
+    private String extractTextFromData(Map<String, Object> data) {
+        if (data == null) return null;
+
+        // 格式1: data.text
+        if (data.containsKey("text")) {
+            String t = (String) data.get("text");
+            return StringUtils.hasText(t) ? t : "";
+        }
+
+        // 格式2: data.result.text
+        if (data.containsKey("result")) {
+            Object resultObj = data.get("result");
+            if (resultObj instanceof Map) {
+                Map<String, Object> resultMap = (Map<String, Object>) resultObj;
+                if (resultMap.containsKey("text")) {
+                    String t = (String) resultMap.get("text");
+                    return StringUtils.hasText(t) ? t : "";
+                }
+            }
+        }
+
+        // 格式3: data.transcription
+        if (data.containsKey("transcription")) {
+            String t = (String) data.get("transcription");
+            return StringUtils.hasText(t) ? t : "";
+        }
+
+        return null;
     }
 }
