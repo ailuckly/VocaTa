@@ -68,7 +68,8 @@ jobs:
 
         echo "[2/5] deploy compose stack"
         echo "当前提交: $GIT_SHA"
-        docker compose --env-file "$ENV_FILE" up -d --build --wait
+        docker compose --env-file "$ENV_FILE" build --no-cache
+        docker compose --env-file "$ENV_FILE" up -d --wait
 
         echo "[3/5] inspect compose status"
         docker compose --env-file "$ENV_FILE" ps
