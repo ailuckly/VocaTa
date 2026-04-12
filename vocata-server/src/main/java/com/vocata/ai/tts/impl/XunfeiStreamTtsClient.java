@@ -199,7 +199,7 @@ public class XunfeiStreamTtsClient implements TtsClient {
      */
     private String getXunfeiVoiceId(String voiceId) {
         if (voiceId == null || voiceId.isEmpty()) {
-            return "x4_lingxiaoyu_emo"; // 默认小燕
+            return "x4_xiaoyan"; // 默认小燕
         }
 
         // 检查是否是科大讯飞支持的音色
@@ -210,8 +210,8 @@ public class XunfeiStreamTtsClient implements TtsClient {
         }
 
         // 如果传入的音色ID不被支持，使用默认音色
-        logger.warn("不支持的音色ID: {}，使用默认音色: xiaoyan", voiceId);
-        return "x4_lingxiaoyu_emo";
+        logger.warn("不支持的音色ID: {}，使用默认音色: x4_xiaoyan", voiceId);
+        return "x4_xiaoyan";
     }
 
     /**
