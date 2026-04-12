@@ -131,11 +131,17 @@ public class QiniuSttClient implements SttClient {
                             .flux();
                 })
                 .onErrorResume(error -> {
-                    logger.error("七牛云STT流式识别失败", error);
+                    logger.error("七牛云STT流式识别失败: {}", error.getMessage(), error);
                     SttClient.SttResult errorResult = new SttClient.SttResult();
                     errorResult.setText("语音识别服务暂时不可用，请稍后再试");
                     errorResult.setConfidence(0.0);
                     errorResult.setFinal(true);
+
+                    Map<String, Object> metadata = new HashMap<>();
+                    metadata.put("provider", "QiniuSTT");
+                    metadata.put("error", error.getMessage());
+                    errorResult.setMetadata(metadata);
+
                     return Flux.just(errorResult);
                 });
     }

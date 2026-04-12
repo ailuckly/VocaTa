@@ -144,13 +144,13 @@ public class StreamingPipelineOrchestrator {
                             .filter(r -> r.getText() != null && !r.getText().trim().isEmpty())
                             .share(); // 允许多个订阅者
 
-                    // STT 中间结果 → 客户端
+                    // STT 中间结果 → 客户端（包括错误结果，让前端知道发生了什么）
                     Flux<PipelineEvent> sttEvents = sttFlux.map(r ->
                             new PipelineEvent.SttResult(r.getText(), r.isFinal(), r.getConfidence()));
 
-                    // 等待 final STT → 进入 LLM+TTS
+                    // 过滤 STT 错误：metadata 中带 "error" 的结果不送 LLM
                     Flux<PipelineEvent> llmTtsEvents = sttFlux
-                            .filter(SttClient.SttResult::isFinal)
+                            .filter(r -> r.isFinal() && !isSttError(r))
                             .take(1)
                             .flatMap(finalResult -> {
                                 state.set(PipelineState.PROCESSING);
@@ -402,6 +402,11 @@ public class StreamingPipelineOrchestrator {
     }
 
     // ── 内部上下文对象 ──
+
+    /** 检查 STT 结果是否是错误（metadata 中带 "error" 键） */
+    private boolean isSttError(SttClient.SttResult result) {
+        return result.getMetadata() != null && result.getMetadata().containsKey("error");
+    }
 
     private static class ConversationContext {
         final Conversation conversation;
