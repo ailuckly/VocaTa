@@ -216,7 +216,8 @@ export class VocaTaWebSocketClient {
   startAudioRecording(): void {
     this.sendControlMessage({
       type: 'audio_start',
-      format: 'mediarecorder'
+      format: 'pcm',
+      sampleRate: 16000
     })
   }
 
@@ -289,12 +290,12 @@ export class VocaTaWebSocketClient {
   }
 }
 
-const CHUNK_MS = 250
-
-// 音频管理器类 - 实时分块录音模式
+// 音频管理器类 - PCM 实时录音模式（ScriptProcessorNode → 16kHz Int16 PCM）
 export class AudioManager {
   private audioContext: AudioContext | null = null
-  private mediaRecorder: MediaRecorder | null = null
+  private recordingContext: AudioContext | null = null
+  private scriptProcessor: ScriptProcessorNode | null = null
+  private audioSourceNode: MediaStreamAudioSourceNode | null = null
   private audioQueue: ArrayBuffer[] = []
   private isPlaying = false
   private isRecording = false
@@ -341,12 +342,23 @@ export class AudioManager {
   }
 
   private resetRecordingState(options: { stopTracks?: boolean } = {}): void {
+    if (this.scriptProcessor) {
+      try { this.scriptProcessor.disconnect() } catch { /* ignore */ }
+      this.scriptProcessor = null
+    }
+    if (this.audioSourceNode) {
+      try { this.audioSourceNode.disconnect() } catch { /* ignore */ }
+      this.audioSourceNode = null
+    }
     if (options.stopTracks && this.audioStream) {
       this.audioStream.getTracks().forEach(track => track.stop())
     }
+    if (this.recordingContext) {
+      this.recordingContext.close().catch(() => undefined)
+      this.recordingContext = null
+    }
 
     this.audioStream = null
-    this.mediaRecorder = null
     this.currentWsClient = null
     this.pendingChunkSends = new Set()
     this.chunkSendFailureCount = 0
@@ -455,79 +467,47 @@ export class AudioManager {
           return abortAndCleanup()
         }
 
-        // 选择最佳音频格式
-        let mimeType = 'audio/webm;codecs=opus'
-        if (!MediaRecorder.isTypeSupported(mimeType)) {
-          mimeType = 'audio/webm'
-          if (!MediaRecorder.isTypeSupported(mimeType)) {
-            mimeType = 'audio/wav'
-            if (!MediaRecorder.isTypeSupported(mimeType)) {
-              mimeType = 'audio/mpeg'
-              if (!MediaRecorder.isTypeSupported(mimeType)) {
-                mimeType = '' // 使用浏览器默认格式
-              }
-            }
-          }
+        // 创建 16kHz AudioContext 用于 PCM 采集（讯飞 IAT 要求 16kHz 单声道 PCM）
+        const AudioContextCtor =
+          window.AudioContext || (window as WindowWithWebkitAudio).webkitAudioContext
+        this.recordingContext = new AudioContextCtor({ sampleRate: 16000 })
+        if (this.recordingContext.state === 'suspended') {
+          await this.recordingContext.resume()
         }
 
-        console.log('🎵 使用音频格式:', mimeType || '默认格式')
+        this.audioSourceNode = this.recordingContext.createMediaStreamSource(this.audioStream)
 
-        // 创建MediaRecorder - 按固定间隔产出音频块
-        const mediaRecorderOptions: MediaRecorderOptions = {}
-        if (mimeType) {
-          mediaRecorderOptions.mimeType = mimeType
-        }
+        // ScriptProcessorNode: buffer 4096 帧 @ 16kHz ≈ 256ms/chunk
+        const PROC_BUFFER = 4096
+        this.scriptProcessor = this.recordingContext.createScriptProcessor(PROC_BUFFER, 1, 1)
+        this.audioSourceNode.connect(this.scriptProcessor)
+        this.scriptProcessor.connect(this.recordingContext.destination)
 
-        this.mediaRecorder = new MediaRecorder(this.audioStream, mediaRecorderOptions)
-
-        const startedPromise = new Promise<void>((resolve, reject) => {
-          if (!this.mediaRecorder) {
-            reject(new Error('MediaRecorder初始化失败'))
+        this.scriptProcessor.onaudioprocess = (event) => {
+          if (this.activeSessionId !== sessionId || this.recordingState !== 'recording') {
             return
           }
-
-          this.mediaRecorder.onstart = () => {
-            if (this.activeSessionId !== sessionId) {
-              resolve()
-              return
-            }
-            if (shouldAbort?.()) {
-              this.recordingState = 'stopping'
-              try {
-                this.mediaRecorder?.stop()
-              } catch (error) {
-                console.error('❌ 启动后立即停止录音失败:', error)
-              }
-              resolve()
-              return
-            }
-            this.recordingState = 'recording'
-            this.isRecording = true
-            console.log(`✅ 开始实时分块录音 (${CHUNK_MS}ms/chunk)`)
-            resolve()
+          const float32 = event.inputBuffer.getChannelData(0)
+          // Float32 [-1,1] → Int16 PCM
+          const int16 = new Int16Array(float32.length)
+          for (let i = 0; i < float32.length; i++) {
+            const s = Math.max(-1, Math.min(1, float32[i]))
+            int16[i] = s < 0 ? s * 0x8000 : s * 0x7fff
           }
-
-          this.mediaRecorder.ondataavailable = (event) => {
-            if (this.activeSessionId !== sessionId) {
-              return
-            }
-            const sendPromise = this.handleAudioChunk(event)
-            this.pendingChunkSends.add(sendPromise)
-            sendPromise.finally(() => {
-              this.pendingChunkSends.delete(sendPromise)
-            })
+          if (this.currentWsClient?.isConnected) {
+            this.currentWsClient.sendAudioData(int16.buffer.slice(0))
+          } else {
+            this.chunkSendFailureCount++
           }
+        }
 
-          this.mediaRecorder.onstop = () => {
-            void this.handleMediaRecorderStop(sessionId)
-          }
-        })
-
-        this.mediaRecorder.start(CHUNK_MS)
-        await startedPromise
         if (shouldAbort?.()) {
           return abortAndCleanup()
         }
+
+        this.recordingState = 'recording'
+        this.isRecording = true
+        console.log('✅ 开始 PCM 实时录音 (16kHz, mono, Int16)')
         return true
       } catch (error) {
         this.resetRecordingState({ stopTracks: true })
@@ -539,7 +519,7 @@ export class AudioManager {
 
   async stopRecording(): Promise<boolean> {
     return this.enqueueLifecycleOperation(async () => {
-      if (!this.mediaRecorder || this.recordingState !== 'recording') {
+      if (this.recordingState !== 'recording') {
         return false
       }
 
@@ -547,14 +527,32 @@ export class AudioManager {
 
       if (!this.stopRecordingPromise) {
         this.recordingState = 'stopping'
+        this.isRecording = false
+
         this.stopRecordingPromise = new Promise<void>((resolve, reject) => {
           this.stopRecordingResolve = resolve
           this.stopRecordingReject = reject
 
           try {
-            this.mediaRecorder!.stop()
-            this.isRecording = false
-            console.log('⏹️ 停止实时分块录音，等待最后一个音频块刷新完成')
+            // 断开 PCM 采集节点
+            if (this.scriptProcessor) {
+              this.scriptProcessor.disconnect()
+              this.scriptProcessor = null
+            }
+            if (this.audioSourceNode) {
+              this.audioSourceNode.disconnect()
+              this.audioSourceNode = null
+            }
+            if (this.audioStream) {
+              this.audioStream.getTracks().forEach(t => t.stop())
+              this.audioStream = null
+            }
+            if (this.recordingContext) {
+              this.recordingContext.close().catch(() => undefined)
+              this.recordingContext = null
+            }
+            console.log('⏹️ PCM 录音已停止')
+            resolve()
           } catch (error) {
             console.error('❌ 停止录音失败:', error)
             this.stopRecordingResolve = undefined
@@ -573,69 +571,10 @@ export class AudioManager {
         this.stopRecordingPromise = null
         this.stopRecordingResolve = undefined
         this.stopRecordingReject = undefined
-      }
-    })
-  }
-
-  private async handleAudioChunk(event: BlobEvent): Promise<void> {
-    try {
-      if (!event.data || event.data.size === 0) {
-        return
-      }
-
-      const audioBuffer = await event.data.arrayBuffer()
-      console.log(`🎤 发送实时音频块: ${audioBuffer.byteLength} bytes`)
-
-      if (this.currentWsClient?.isConnected) {
-        this.currentWsClient.sendAudioData(audioBuffer)
-        console.log(`📤 已发送实时音频块到服务器: ${audioBuffer.byteLength} bytes`)
-      } else {
-        console.error('❌ WebSocket未连接，无法发送音频数据')
-        this.chunkSendFailureCount++
-        console.warn('⚠️ 实时音频块丢失：WebSocket未连接')
-      }
-    } catch (error) {
-      console.error('❌ 处理实时音频块失败:', error)
-      this.chunkSendFailureCount++
-    }
-  }
-
-  private async handleMediaRecorderStop(sessionId: number): Promise<void> {
-    let caughtError: unknown
-    const resolve = this.stopRecordingResolve
-    const reject = this.stopRecordingReject
-    try {
-      await Promise.allSettled(Array.from(this.pendingChunkSends))
-    } catch (error) {
-      console.error('❌ 处理录音停止事件失败:', error)
-      caughtError = error
-    } finally {
-      this.stopRecordingResolve = undefined
-      this.stopRecordingReject = undefined
-      this.stopRecordingPromise = null
-      this.pendingChunkSends = new Set()
-
-      if (this.audioStream && this.activeSessionId === sessionId) {
-        this.audioStream.getTracks().forEach(track => track.stop())
-      }
-      if (this.activeSessionId === sessionId) {
-        this.mediaRecorder = null
-        this.audioStream = null
         this.currentWsClient = null
         this.recordingState = 'idle'
       }
-
-      if (caughtError) {
-        reject?.(caughtError)
-      } else {
-        if (this.chunkSendFailureCount > 0) {
-          console.warn(`⚠️ 录音停止完成，但有 ${this.chunkSendFailureCount} 个音频块发送失败`)
-        } else {
-          console.log('✅ 录音停止完成，所有音频块均已刷新')
-        }
-        resolve?.()
-      }
-    }
+    })
   }
 
   async playAudio(audioBuffer: ArrayBuffer): Promise<void> {
