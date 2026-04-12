@@ -139,7 +139,7 @@ qiniu:
   secret-key: ${QINIU_SECRET_KEY:your-qiniu-secret-key}
   # 七牛云STT配置
   stt:
-    endpoint: ${QINIU_STT_ENDPOINT:https://openai.qiniu.com/v1}
+    endpoint: ${QINIU_STT_ENDPOINT:https://api.qnaigc.com/v1}
     model: ${QINIU_STT_MODEL:asr}
 
 # Gemini配置
