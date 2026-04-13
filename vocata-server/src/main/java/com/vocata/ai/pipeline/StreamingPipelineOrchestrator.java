@@ -159,9 +159,10 @@ public class StreamingPipelineOrchestrator {
 
                     return Flux.concat(
                             Flux.just(new PipelineEvent.StateChange(PipelineState.LISTENING)),
-                            sttEvents.takeUntil(r -> ((PipelineEvent.SttResult) r).isFinal()),
-                            Flux.just(new PipelineEvent.StateChange(PipelineState.PROCESSING)),
-                            llmTtsEvents,
+                            Flux.merge(
+                                    sttEvents.takeUntil(r -> ((PipelineEvent.SttResult) r).isFinal()),
+                                    llmTtsEvents
+                            ),
                             Flux.just(new PipelineEvent.Complete())
                     );
                 })
