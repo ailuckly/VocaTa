@@ -142,6 +142,21 @@ qiniu:
     endpoint: ${QINIU_STT_ENDPOINT:https://api.qnaigc.com/v1}
     model: ${QINIU_STT_MODEL:asr}
 
+# 科大讯飞配置
+xunfei:
+  stt:
+    app-id: ${XUNFEI_STT_APP_ID:your-xunfei-stt-app-id}
+    api-key: ${XUNFEI_STT_API_KEY:your-xunfei-stt-api-key}
+    secret-key: ${XUNFEI_STT_SECRET_KEY:your-xunfei-stt-secret-key}
+    host: ${XUNFEI_STT_HOST:iat-api.xfyun.cn}
+    path: ${XUNFEI_STT_PATH:/v2/iat}
+  tts:
+    app-id: ${XUNFEI_TTS_APP_ID:your-xunfei-tts-app-id}
+    api-key: ${XUNFEI_TTS_API_KEY:your-xunfei-tts-api-key}
+    secret-key: ${XUNFEI_TTS_SECRET_KEY:your-xunfei-tts-secret-key}
+    host: ${XUNFEI_TTS_HOST:tts-api.xfyun.cn}
+    path: ${XUNFEI_TTS_PATH:/v2/tts}
+
 # Gemini配置
 gemini:
   api:
