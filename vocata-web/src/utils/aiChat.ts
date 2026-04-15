@@ -922,6 +922,10 @@ export class VocaTaAIChat {
 
   private handleError(message: ServerErrorMessage): void {
     console.error('❌ 服务器错误:', message.error)
+    // 如果正在录音期间收到服务器错误，停止录音避免卡死
+    if (this.voiceState !== 'idle') {
+      this.stopRecording().catch(() => undefined)
+    }
   }
 
   // 公开方法

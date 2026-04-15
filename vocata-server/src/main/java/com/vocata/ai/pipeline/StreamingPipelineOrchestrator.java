@@ -22,6 +22,7 @@ import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.publisher.Sinks;
+import reactor.core.scheduler.Schedulers;
 
 import java.time.LocalDateTime;
 import java.util.*;
@@ -360,8 +361,7 @@ public class StreamingPipelineOrchestrator {
     // ═══════════════════════════════════════════════════════
 
     private Mono<Message> saveMessage(Long conversationId, String content, SenderType senderType, Long userId) {
-        return Mono.fromCallable(() -> {
-            Message message = new Message();
+        return Mono.fromCallable(() -> {            Message message = new Message();
             message.setMessageUuid(UUID.randomUUID());
             message.setConversationId(conversationId);
             message.setSenderType(senderType.getCode());
@@ -399,7 +399,7 @@ public class StreamingPipelineOrchestrator {
             }
 
             return message;
-        });
+        }).subscribeOn(Schedulers.boundedElastic());
     }
 
     // ── 内部上下文对象 ──
