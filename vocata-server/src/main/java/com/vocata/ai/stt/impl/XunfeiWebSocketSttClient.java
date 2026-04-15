@@ -25,6 +25,7 @@ import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -93,6 +94,9 @@ public class XunfeiWebSocketSttClient implements SttClient {
                 AtomicBoolean isFirstFrame = new AtomicBoolean(true);
                 AtomicInteger status = new AtomicInteger(0); // 0: 第一帧, 1: 中间帧, 2: 最后一帧
 
+                // wpgs 模式下按 sn 累积识别段落
+                ConcurrentSkipListMap<Integer, String> segments = new ConcurrentSkipListMap<>();
+
                 // 添加心跳检测机制
                 AtomicBoolean heartbeatActive = new AtomicBoolean(true);
 
@@ -115,13 +119,67 @@ public class XunfeiWebSocketSttClient implements SttClient {
                             logger.debug("🎤【科大讯飞WebSocket STT】收到响应: {}", responseText);
 
                             JsonNode response = objectMapper.readTree(responseText);
-                            SttResult result = parseWebSocketResponse(response, config);
+                            int code = response.path("code").asInt(-1);
+                            if (code != 0) {
+                                String msg = response.path("message").asText("未知错误");
+                                logger.error("🎤【科大讯飞WebSocket STT】API错误 code={}: {}", code, msg);
+                                SttResult errorResult = new SttResult();
+                                errorResult.setText("API错误: " + msg);
+                                errorResult.setConfidence(0.0);
+                                errorResult.setFinal(true);
+                                Map<String, Object> errMeta = new HashMap<>();
+                                errMeta.put("error", msg);
+                                errMeta.put("provider", "XunfeiWebSocketSTT");
+                                errorResult.setMetadata(errMeta);
+                                sink.next(errorResult);
+                                return WebSocket.Listener.super.onText(webSocket, data, last);
+                            }
 
-                            if (result != null && StringUtils.hasText(result.getText())) {
-                                logger.info("【科大讯飞WebSocket STT识别】文字: '{}', 置信度: {}, 最终: {}, 语言: {}",
-                                           result.getText(), result.getConfidence(), result.isFinal(), config.getLanguage());
+                            JsonNode dataNode = response.path("data");
+                            int frameStatus = dataNode.path("status").asInt(-1);
+                            JsonNode result = dataNode.path("result");
 
-                                sink.next(result);
+                            // 提取本帧文字
+                            StringBuilder segText = new StringBuilder();
+                            JsonNode ws = result.path("ws");
+                            if (ws.isArray()) {
+                                for (JsonNode wsItem : ws) {
+                                    for (JsonNode cwItem : wsItem.path("cw")) {
+                                        String w = cwItem.path("w").asText();
+                                        if (StringUtils.hasText(w)) segText.append(w);
+                                    }
+                                }
+                            }
+
+                            // 按 sn + pgs/rg 累积文字（wpgs 模式）
+                            int sn = result.path("sn").asInt(0);
+                            String pgs = result.path("pgs").asText("apd");
+                            if ("rpl".equals(pgs)) {
+                                JsonNode rg = result.path("rg");
+                                if (rg.isArray() && rg.size() == 2) {
+                                    int from = rg.get(0).asInt();
+                                    int to   = rg.get(1).asInt();
+                                    for (int i = from; i <= to; i++) segments.remove(i);
+                                }
+                            }
+                            if (segText.length() > 0) {
+                                segments.put(sn, segText.toString());
+                            }
+
+                            String fullText = String.join("", segments.values());
+                            if (!fullText.isEmpty()) {
+                                boolean isFinal = (frameStatus == 2);
+                                logger.info("【科大讯飞WebSocket STT识别】文字: '{}', 最终: {}", fullText, isFinal);
+                                SttResult sttResult = new SttResult();
+                                sttResult.setText(fullText);
+                                sttResult.setConfidence(0.95);
+                                sttResult.setFinal(isFinal);
+                                Map<String, Object> metadata = new HashMap<>();
+                                metadata.put("provider", "XunfeiWebSocketSTT");
+                                metadata.put("language", config.getLanguage());
+                                metadata.put("status", frameStatus);
+                                sttResult.setMetadata(metadata);
+                                sink.next(sttResult);
                             }
 
                         } catch (Exception e) {
@@ -270,8 +328,9 @@ public class XunfeiWebSocketSttClient implements SttClient {
 
         logger.debug("🔐 Authorization字符串: {}", authorization);
 
-        // URL编码
-        String encodedAuthorization = URLEncoder.encode(authorization, StandardCharsets.UTF_8);
+        // 先 Base64 编码 authorization，再 URL 编码
+        String base64Authorization = Base64.getEncoder().encodeToString(authorization.getBytes(StandardCharsets.UTF_8));
+        String encodedAuthorization = URLEncoder.encode(base64Authorization, StandardCharsets.UTF_8);
         String encodedDate = URLEncoder.encode(date, StandardCharsets.UTF_8);
         String encodedHost = URLEncoder.encode(host, StandardCharsets.UTF_8);
 
@@ -298,16 +357,12 @@ public class XunfeiWebSocketSttClient implements SttClient {
         if (status == 0) {
             Map<String, Object> business = new HashMap<>();
             business.put("language", mapLanguage(config.getLanguage()));
-            business.put("domain", "iat"); // 通用识别
-            business.put("accent", "mandarin"); // 普通话
-            business.put("vad_eos", 3000); // 静音检测时长3秒（优化：从10秒减少到3秒，提高响应速度）
-            business.put("max_rg", 30000); // 最大录音时长30秒，防止无限录音
-            business.put("nunum", 0); // 将返回结果数字格式化（0：数字，1：文字）
-            business.put("ptt", 1); // 开启标点符号添加
-            business.put("rlang", "zh-cn"); // 返回语言类型
-            business.put("vinfo", 1); // 是否返回语音信息
-            business.put("speex_size", 30); // speex音频帧长度，用于VAD
-            business.put("dwa", "wpgs"); // 动态修正
+            business.put("domain", "iat");
+            business.put("accent", "mandarin");
+            business.put("vad_eos", 3000);
+            business.put("dwa", "wpgs");
+            business.put("ptt", 1);
+            business.put("nunum", 0);
             frame.put("business", business);
         }
 
