@@ -359,7 +359,7 @@ public class XunfeiWebSocketSttClient implements SttClient {
             business.put("language", mapLanguage(config.getLanguage()));
             business.put("domain", "iat");
             business.put("accent", "mandarin");
-            business.put("vad_eos", 3000);
+            business.put("vad_eos", 1000);
             business.put("dwa", "wpgs");
             business.put("ptt", 1);
             business.put("nunum", 0);
