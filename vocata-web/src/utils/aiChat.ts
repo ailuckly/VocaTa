@@ -290,6 +290,13 @@ export class VocaTaWebSocketClient {
   }
 }
 
+// VAD 常量（ScriptProcessorNode 2048 帧 @ 16kHz = 128ms/帧）
+const PROC_BUFFER = 2048
+const SPEECH_THRESHOLD = 0.015        // RMS 超过此值 → 识别为说话
+const SILENCE_THRESHOLD = 0.010       // RMS 低于此值 → 识别为静音
+const MIN_SPEECH_FRAMES = 2           // 至少 2 帧真实语音才允许 VAD 触发（防误触）
+const SILENCE_FRAMES_REQUIRED = 6     // 6 × 128ms ≈ 0.8s 静音后自动停止
+
 // 音频管理器类 - PCM 实时录音模式（ScriptProcessorNode → 16kHz Int16 PCM）
 export class AudioManager {
   private audioContext: AudioContext | null = null
@@ -312,6 +319,16 @@ export class AudioManager {
   private stopRecordingResolve?: () => void
   private stopRecordingReject?: (reason?: unknown) => void
   private playbackStateListener?: (isPlaying: boolean) => void
+
+  // VAD 状态
+  private isMuted = false
+  private isAISpeaking = false
+  private hasSpeechStarted = false
+  private speechFrameCount = 0
+  private silenceFrameCount = 0
+  private bargeInTriggered = false
+  private onVADSilenceCallback?: () => void
+  private onBargeInCallback?: () => void
 
   async initialize(): Promise<void> {
     try {
@@ -367,6 +384,11 @@ export class AudioManager {
     this.stopRecordingReject = undefined
     this.recordingState = 'idle'
     this.isRecording = false
+    // VAD 状态重置（isMuted 跨轮次保持，不在这里重置）
+    this.hasSpeechStarted = false
+    this.speechFrameCount = 0
+    this.silenceFrameCount = 0
+    this.bargeInTriggered = false
   }
 
   // 延迟初始化AudioContext，在用户交互后调用
@@ -477,8 +499,7 @@ export class AudioManager {
 
         this.audioSourceNode = this.recordingContext.createMediaStreamSource(this.audioStream)
 
-        // ScriptProcessorNode: buffer 4096 帧 @ 16kHz ≈ 256ms/chunk
-        const PROC_BUFFER = 4096
+        // ScriptProcessorNode: 2048 帧 @ 16kHz = 128ms/帧，比 4096 更细粒度，利于 VAD
         this.scriptProcessor = this.recordingContext.createScriptProcessor(PROC_BUFFER, 1, 1)
         this.audioSourceNode.connect(this.scriptProcessor)
         this.scriptProcessor.connect(this.recordingContext.destination)
@@ -487,7 +508,41 @@ export class AudioManager {
           if (this.activeSessionId !== sessionId || this.recordingState !== 'recording') {
             return
           }
+          if (this.isMuted) return  // 静音：跳过发送和 VAD
+
           const float32 = event.inputBuffer.getChannelData(0)
+
+          // RMS 计算
+          let sumSq = 0
+          for (let i = 0; i < float32.length; i++) sumSq += float32[i] * float32[i]
+          const rms = Math.sqrt(sumSq / float32.length)
+
+          // VAD + Barge-in 状态更新
+          if (rms > SPEECH_THRESHOLD) {
+            this.hasSpeechStarted = true
+            this.speechFrameCount++
+            this.silenceFrameCount = 0
+            // Barge-in：AI 说话时用户插话
+            if (this.isAISpeaking && !this.bargeInTriggered) {
+              this.bargeInTriggered = true
+              this.onBargeInCallback?.()
+            }
+          } else if (this.hasSpeechStarted && this.speechFrameCount >= MIN_SPEECH_FRAMES) {
+            if (rms < SILENCE_THRESHOLD) {
+              this.silenceFrameCount++
+              if (this.silenceFrameCount >= SILENCE_FRAMES_REQUIRED) {
+                console.log('🔇 VAD: silence detected, auto-stopping')
+                this.hasSpeechStarted = false
+                this.silenceFrameCount = 0
+                this.speechFrameCount = 0
+                this.onVADSilenceCallback?.()
+                return  // 触发后本帧不发送
+              }
+            } else {
+              this.silenceFrameCount = 0
+            }
+          }
+
           // Float32 [-1,1] → Int16 PCM
           const int16 = new Int16Array(float32.length)
           for (let i = 0; i < float32.length; i++) {
@@ -507,7 +562,7 @@ export class AudioManager {
 
         this.recordingState = 'recording'
         this.isRecording = true
-        console.log('✅ 开始 PCM 实时录音 (16kHz, mono, Int16)')
+        console.log('✅ 开始 PCM 实时录音 (16kHz, mono, Int16, VAD enabled)')
         return true
       } catch (error) {
         this.resetRecordingState({ stopTracks: true })
@@ -577,8 +632,37 @@ export class AudioManager {
     })
   }
 
-  async playAudio(audioBuffer: ArrayBuffer): Promise<void> {
-    try {
+  // VAD / 静音 / Barge-in 控制
+  setVADSilenceCallback(cb: (() => void) | undefined): void {
+    this.onVADSilenceCallback = cb
+  }
+
+  setBargeInCallback(cb: (() => void) | undefined): void {
+    this.onBargeInCallback = cb
+  }
+
+  setAISpeaking(speaking: boolean): void {
+    this.isAISpeaking = speaking
+    if (!speaking) {
+      // AI 停止说话后重置 barge-in，允许下一轮检测
+      this.bargeInTriggered = false
+    }
+  }
+
+  setMuted(muted: boolean): void {
+    this.isMuted = muted
+    if (muted) {
+      this.hasSpeechStarted = false
+      this.silenceFrameCount = 0
+      this.speechFrameCount = 0
+    }
+  }
+
+  get muted(): boolean {
+    return this.isMuted
+  }
+
+  async playAudio(audioBuffer: ArrayBuffer): Promise<void> {    try {
       if (!this.audioContext) {
         await this.initialize()
       }
@@ -701,6 +785,7 @@ export class VocaTaAIChat {
   private wsClient: VocaTaWebSocketClient | null = null
   private audioManager: AudioManager
   private isAudioCallActive = false
+  private isContinuousModeActive = false
   private conversationUuid: string | null = null
   private connectingPromise: Promise<void> | null = null
   private voiceState: 'idle' | 'starting' | 'recording' | 'stopping' = 'idle'
@@ -723,6 +808,16 @@ export class VocaTaAIChat {
     this.audioManager = new AudioManager()
     this.audioManager.setPlaybackStateListener(isPlaying => {
       this.onAudioPlayCallback?.(isPlaying)
+      // 同步 AI 说话状态给 AudioManager（用于 barge-in 检测）
+      this.audioManager.setAISpeaking(isPlaying)
+      // 持续模式：TTS 播完后自动开始下一轮聆听
+      if (!isPlaying && this.isAudioCallActive && this.isContinuousModeActive) {
+        setTimeout(() => {
+          if (this.isAudioCallActive && this.voiceState === 'idle') {
+            this.startRecording().catch(err => console.error('❌ 自动重启录音失败:', err))
+          }
+        }, 300)
+      }
     })
   }
 
@@ -918,6 +1013,14 @@ export class VocaTaAIChat {
 
   private handleProcessComplete(message: CompleteMessage): void {
     console.log('✅ 处理完成:', message.message)
+    // STT 无结果时 TTS 不播放，不会触发 onAudioPlay(false) → 手动触发下一轮
+    if (this.isAudioCallActive && this.isContinuousModeActive && !this.audioManager.playing) {
+      setTimeout(() => {
+        if (this.isAudioCallActive && this.voiceState === 'idle') {
+          this.startRecording().catch(err => console.error('❌ complete后自动重启失败:', err))
+        }
+      }, 300)
+    }
   }
 
   private handleError(message: ServerErrorMessage): void {
@@ -1059,15 +1162,39 @@ export class VocaTaAIChat {
       throw new Error('WebSocket未连接，无法启动音频通话')
     }
 
-    console.log('📞 音频通话已激活，等待用户点击开始实时捕获')
     this.isAudioCallActive = true
+    this.isContinuousModeActive = true
 
-    // 清空残留的播放队列，确保新的通话段落从空状态开始
+    // 清空残留的播放队列
     this.audioManager.clearQueue()
     this.onAudioPlayCallback?.(false)
+
+    // 注册 VAD 静音回调：静音 ~0.8s 后自动提交
+    this.audioManager.setVADSilenceCallback(() => {
+      if (this.voiceState === 'recording') {
+        this.stopRecording().catch(err => console.error('❌ VAD 自动停止失败:', err))
+      }
+    })
+
+    // 注册 Barge-in 回调：AI 说话时用户插话
+    this.audioManager.setBargeInCallback(() => {
+      console.log('🎤 Barge-in：用户插话，打断 AI')
+      this.audioManager.clearQueue()
+      // 发送 audio_start → 服务端 SPEAKING 状态时触发 handleBargeIn
+      this.wsClient?.startAudioRecording()
+    })
+
+    // 立即开始聆听（GPT Voice 体验）
+    console.log('📞 音频通话已激活，立即开始聆听')
+    await this.startRecording()
   }
 
   async stopAudioCall(): Promise<void> {
+    this.isContinuousModeActive = false
+    this.audioManager.setVADSilenceCallback(undefined)
+    this.audioManager.setBargeInCallback(undefined)
+    this.audioManager.setMuted(false)
+
     if (this.voiceState !== 'idle') {
       await this.stopRecording()
     }
@@ -1135,6 +1262,18 @@ export class VocaTaAIChat {
 
   get voiceActive(): boolean {
     return this.audioManager.recording
+  }
+
+  get micMuted(): boolean {
+    return this.audioManager.muted
+  }
+
+  muteMic(): void {
+    this.audioManager.setMuted(true)
+  }
+
+  unmuteMic(): void {
+    this.audioManager.setMuted(false)
   }
 
   // 清理资源

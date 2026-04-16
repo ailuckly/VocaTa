@@ -126,19 +126,16 @@
         <div class="voice-minimal__controls">
           <button
             class="voice-minimal__control is-mic"
-            :class="{ 'is-recording': aiChat?.recording }"
+            :class="{ 'is-recording': aiChat?.recording && !isMicMuted, 'is-muted': isMicMuted }"
             @click="toggleMicrophone"
             :disabled="!isAIConnected"
+            :title="isMicMuted ? '取消静音' : '静音'"
           >
             <el-icon><Microphone /></el-icon>
           </button>
           <button class="voice-minimal__control is-cancel" @click="stopAudioCall">
             <el-icon><Close /></el-icon>
           </button>
-        </div>
-
-        <div class="voice-minimal__hint">
-          提示：点击麦克风即可开始实时捕获语音，再点一次结束本轮捕获，等待 AI 回答
         </div>
       </div>
     </div>
@@ -209,9 +206,8 @@ interface TypewriterState {
 const typewriterState = ref<TypewriterState | null>(null)
 const TYPEWRITER_SPEED = 35
 
-// VAD相关状态
-const vadActive = ref(false)
-const vadCheckInterval = ref<number | null>(null)
+// VAD相关状态（已内置于 AudioManager，此处仅保留静音状态）
+const isMicMuted = ref(false)
 
 
 // 引用
@@ -484,12 +480,11 @@ const characterInitials = computed(() => {
 
 const voiceStatusText = computed(() => {
   if (!isAIConnected.value) return '语音通道连接中…'
-  if (aiChat.value?.recording) {
-    return vadActive.value ? '正在实时捕获…' : '实时捕获中，准备说话'
-  }
-  if (isAISpeaking.value) return 'AI 正在回答'
+  if (isMicMuted.value) return '麦克风已静音'
+  if (aiChat.value?.recording) return '正在聆听...'
+  if (isAISpeaking.value) return 'AI 回答中'
   if (isAIThinking.value) return 'AI 正在思考…'
-  return '点击下方按钮开启实时语音对话'
+  return '语音对话中'
 })
 
 const visibleVoiceTranscripts = computed(() => voiceTranscripts.value.slice(-6))
@@ -729,12 +724,10 @@ const startAudioCall = async () => {
 
     console.log('📞 开始音频通话')
     await aiChat.value.prepareAudioPlayback()
-    await aiChat.value.startAudioCall()
+    await aiChat.value.startAudioCall()  // 内部立即开始录音
     isAudioCallActive.value = true
+    isMicMuted.value = false
     voiceTranscripts.value = []
-
-    // 启动VAD状态监控
-    startVADMonitoring()
 
   } catch (error) {
     console.error('❌ 启动音频通话失败:', error)
@@ -749,11 +742,9 @@ const stopAudioCall = async () => {
     console.log('📞 停止音频通话')
     await aiChat.value.stopAudioCall()
     isAudioCallActive.value = false
+    isMicMuted.value = false
     currentSTTText.value = ''
     isAISpeaking.value = false
-
-    // 停止VAD监控
-    stopVADMonitoring()
 
   } catch (error) {
     console.error('❌ 停止音频通话失败:', error)
@@ -761,22 +752,15 @@ const stopAudioCall = async () => {
   }
 }
 
-const toggleMicrophone = async () => {
+const toggleMicrophone = () => {
   if (!aiChat.value || !isAudioCallActive.value) return
 
-  try {
-    if (aiChat.value.recording) {
-      // 当前在录音，停止录音
-      console.log('🛑 停止录音')
-      await aiChat.value.stopRecording()
-    } else {
-      // 当前没有录音，开始录音
-      console.log('🎤 开始录音')
-      await aiChat.value.startRecording()
-    }
-  } catch (error) {
-    console.error('❌ 切换麦克风状态失败:', error)
-    ElMessage.error('切换麦克风状态失败: ' + (error as Error).message)
+  if (isMicMuted.value) {
+    aiChat.value.unmuteMic()
+    isMicMuted.value = false
+  } else {
+    aiChat.value.muteMic()
+    isMicMuted.value = true
   }
 }
 
@@ -917,25 +901,6 @@ const scrollToBottomWithRetry = (maxRetries: number = 3) => {
   nextTick(() => {
     tryScroll()
   })
-}
-
-// VAD监控相关函数
-const startVADMonitoring = () => {
-  if (vadCheckInterval.value) {
-    clearInterval(vadCheckInterval.value)
-  }
-
-  vadCheckInterval.value = window.setInterval(() => {
-    vadActive.value = aiChat.value?.voiceActive ?? false
-  }, 100) // 每100ms检查一次VAD状态
-}
-
-const stopVADMonitoring = () => {
-  if (vadCheckInterval.value) {
-    clearInterval(vadCheckInterval.value)
-    vadCheckInterval.value = null
-  }
-  vadActive.value = false
 }
 
 // 格式化时间
@@ -2004,6 +1969,11 @@ const formatTime = (dateString: string) => {
   &__control.is-mic.is-recording {
     color: #dc2626;
     background: rgba(255, 243, 241, 0.96);
+  }
+
+  &__control.is-mic.is-muted {
+    color: #ffffff;
+    background: #f56c6c;
   }
 
   &__control.is-cancel {
