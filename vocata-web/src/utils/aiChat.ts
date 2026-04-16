@@ -323,6 +323,7 @@ export class AudioManager {
   // VAD 状态
   private isMuted = false
   private isAISpeaking = false
+  private monitoringOnly = false          // true = 麦克风开但不发送音频（用于 barge-in 检测）
   private hasSpeechStarted = false
   private speechFrameCount = 0
   private silenceFrameCount = 0
@@ -385,6 +386,7 @@ export class AudioManager {
     this.recordingState = 'idle'
     this.isRecording = false
     // VAD 状态重置（isMuted 跨轮次保持，不在这里重置）
+    this.monitoringOnly = false
     this.hasSpeechStarted = false
     this.speechFrameCount = 0
     this.silenceFrameCount = 0
@@ -508,7 +510,7 @@ export class AudioManager {
           if (this.activeSessionId !== sessionId || this.recordingState !== 'recording') {
             return
           }
-          if (this.isMuted) return  // 静音：跳过发送和 VAD
+          if (this.isMuted) return  // 用户静音：完全跳过
 
           const float32 = event.inputBuffer.getChannelData(0)
 
@@ -517,12 +519,12 @@ export class AudioManager {
           for (let i = 0; i < float32.length; i++) sumSq += float32[i] * float32[i]
           const rms = Math.sqrt(sumSq / float32.length)
 
-          // VAD + Barge-in 状态更新
+          // VAD + Barge-in（无论是否在监听模式都运行）
           if (rms > SPEECH_THRESHOLD) {
             this.hasSpeechStarted = true
             this.speechFrameCount++
             this.silenceFrameCount = 0
-            // Barge-in：AI 说话时用户插话
+            // Barge-in：AI 说话 & 麦克风处于监听模式时检测到用户说话
             if (this.isAISpeaking && !this.bargeInTriggered) {
               this.bargeInTriggered = true
               this.onBargeInCallback?.()
@@ -530,18 +532,22 @@ export class AudioManager {
           } else if (this.hasSpeechStarted && this.speechFrameCount >= MIN_SPEECH_FRAMES) {
             if (rms < SILENCE_THRESHOLD) {
               this.silenceFrameCount++
-              if (this.silenceFrameCount >= SILENCE_FRAMES_REQUIRED) {
-                console.log('🔇 VAD: silence detected, auto-stopping')
+              // VAD 静音只在发送模式下触发（避免监听模式重复触发）
+              if (this.silenceFrameCount >= SILENCE_FRAMES_REQUIRED && !this.monitoringOnly) {
+                console.log('🔇 VAD: silence detected, switching to monitoring mode')
                 this.hasSpeechStarted = false
                 this.silenceFrameCount = 0
                 this.speechFrameCount = 0
                 this.onVADSilenceCallback?.()
-                return  // 触发后本帧不发送
+                return
               }
             } else {
               this.silenceFrameCount = 0
             }
           }
+
+          // 监听模式：麦克风开着但不发送音频
+          if (this.monitoringOnly) return
 
           // Float32 [-1,1] → Int16 PCM
           const int16 = new Int16Array(float32.length)
@@ -633,6 +639,26 @@ export class AudioManager {
   }
 
   // VAD / 静音 / Barge-in 控制
+  /** 暂停发送音频（保持麦克风开启用于 barge-in 检测） */
+  pauseRecording(): void {
+    if (this.recordingState === 'recording') {
+      this.monitoringOnly = true
+      console.log('⏸️ 切换为监听模式（barge-in 就绪）')
+    }
+  }
+
+  /** 恢复发送音频（从监听模式回到录音模式） */
+  resumeRecording(): void {
+    if (this.recordingState === 'recording') {
+      this.monitoringOnly = false
+      this.hasSpeechStarted = false
+      this.silenceFrameCount = 0
+      this.speechFrameCount = 0
+      this.bargeInTriggered = false
+      console.log('▶️ 恢复录音模式')
+    }
+  }
+
   setVADSilenceCallback(cb: (() => void) | undefined): void {
     this.onVADSilenceCallback = cb
   }
@@ -810,11 +836,11 @@ export class VocaTaAIChat {
       this.onAudioPlayCallback?.(isPlaying)
       // 同步 AI 说话状态给 AudioManager（用于 barge-in 检测）
       this.audioManager.setAISpeaking(isPlaying)
-      // 持续模式：TTS 播完后自动开始下一轮聆听
+      // 持续模式：TTS 播完后恢复录音（麦克风一直开着，只需 resume）
       if (!isPlaying && this.isAudioCallActive && this.isContinuousModeActive) {
         setTimeout(() => {
-          if (this.isAudioCallActive && this.voiceState === 'idle') {
-            this.startRecording().catch(err => console.error('❌ 自动重启录音失败:', err))
+          if (this.isAudioCallActive) {
+            this.audioManager.resumeRecording()  // 从监听模式回到发送模式
           }
         }, 300)
       }
@@ -1013,11 +1039,11 @@ export class VocaTaAIChat {
 
   private handleProcessComplete(message: CompleteMessage): void {
     console.log('✅ 处理完成:', message.message)
-    // STT 无结果时 TTS 不播放，不会触发 onAudioPlay(false) → 手动触发下一轮
+    // STT 无结果时 TTS 不播放，不会触发 onAudioPlay(false) → 手动恢复录音
     if (this.isAudioCallActive && this.isContinuousModeActive && !this.audioManager.playing) {
       setTimeout(() => {
-        if (this.isAudioCallActive && this.voiceState === 'idle') {
-          this.startRecording().catch(err => console.error('❌ complete后自动重启失败:', err))
+        if (this.isAudioCallActive) {
+          this.audioManager.resumeRecording()
         }
       }, 300)
     }
@@ -1169,19 +1195,22 @@ export class VocaTaAIChat {
     this.audioManager.clearQueue()
     this.onAudioPlayCallback?.(false)
 
-    // 注册 VAD 静音回调：静音 ~0.8s 后自动提交
+    // 注册 VAD 静音回调：静音 ~0.8s 后暂停发送（麦克风保持开启）
     this.audioManager.setVADSilenceCallback(() => {
       if (this.voiceState === 'recording') {
-        this.stopRecording().catch(err => console.error('❌ VAD 自动停止失败:', err))
+        // 连续模式：暂停发送但保持麦克风，等待 barge-in 或 TTS 结束后恢复
+        this.audioManager.pauseRecording()
+        this.wsClient?.stopAudioRecording()  // 发送 audio_end
+        console.log('🔇 VAD 触发：暂停发送，麦克风保持监听')
       }
     })
 
-    // 注册 Barge-in 回调：AI 说话时用户插话
+    // 注册 Barge-in 回调：AI 说话时用户插话（麦克风一直开着所以能检测到）
     this.audioManager.setBargeInCallback(() => {
       console.log('🎤 Barge-in：用户插话，打断 AI')
       this.audioManager.clearQueue()
-      // 发送 audio_start → 服务端 SPEAKING 状态时触发 handleBargeIn
-      this.wsClient?.startAudioRecording()
+      this.audioManager.resumeRecording()       // 从监听模式恢复到发送模式
+      this.wsClient?.startAudioRecording()       // 发送 audio_start → 服务端 handleBargeIn
     })
 
     // 立即开始聆听（GPT Voice 体验）
