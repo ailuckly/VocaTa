@@ -306,6 +306,7 @@ export class AudioManager {
   private audioQueue: ArrayBuffer[] = []
   private isPlaying = false
   private isRecording = false
+  private currentSource: AudioBufferSourceNode | null = null  // 当前播放的音频源（用于立即停止）
   private audioStream: MediaStream | null = null
 
   private currentWsClient: VocaTaWebSocketClient | null = null
@@ -703,10 +704,14 @@ export class AudioManager {
       gainNode.connect(this.audioContext!.destination)
 
       source.start()
+      this.currentSource = source
       console.log(`🔊 播放音频: 时长${audioData.duration.toFixed(2)}秒`)
 
       return new Promise((resolve) => {
-        source.onended = () => resolve()
+        source.onended = () => {
+          this.currentSource = null
+          resolve()
+        }
       })
     } catch (error) {
       console.error('❌ 音频播放失败:', error)
@@ -754,6 +759,10 @@ export class AudioManager {
 
   clearQueue(): void {
     this.audioQueue = []
+    if (this.currentSource) {
+      try { this.currentSource.stop() } catch { /* 可能已结束 */ }
+      this.currentSource = null
+    }
     this.isPlaying = false
     this.notifyPlaybackState(false)
     console.log('🗑️ 清除音频队列')
@@ -989,6 +998,11 @@ export class VocaTaAIChat {
         this.handleError(message as ServerErrorMessage)
         break
 
+      case 'barge_in_ack':
+        console.log('✅ Barge-in 确认，截断文本:', (message as Record<string, unknown>).truncatedText
+          ? String((message as Record<string, unknown>).truncatedText).length + '字' : '无')
+        break
+
       default:
         console.log('🔄 收到其他类型消息:', message)
     }
@@ -1208,8 +1222,9 @@ export class VocaTaAIChat {
     // 注册 Barge-in 回调：AI 说话时用户插话（麦克风一直开着所以能检测到）
     this.audioManager.setBargeInCallback(() => {
       console.log('🎤 Barge-in：用户插话，打断 AI')
-      this.audioManager.clearQueue()
-      this.audioManager.resumeRecording()       // 从监听模式恢复到发送模式
+      this.audioManager.clearQueue()             // 立即停止播放（包括当前 AudioBufferSourceNode）
+      this.audioManager.setAISpeaking(false)     // 显式重置，不等播放结束
+      this.audioManager.resumeRecording()        // 从监听模式恢复到发送模式
       this.wsClient?.startAudioRecording()       // 发送 audio_start → 服务端 handleBargeIn
     })
 
