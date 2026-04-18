@@ -295,7 +295,7 @@ const PROC_BUFFER = 2048
 const SPEECH_THRESHOLD = 0.02         // RMS 超过此值 → 识别为说话（提高以减少噪音误触）
 const SILENCE_THRESHOLD = 0.01        // RMS 低于此值 → 识别为静音
 const MIN_SPEECH_FRAMES = 5           // 至少 5 帧真实语音才允许 VAD 触发（~640ms，防环境噪音误触）
-const SILENCE_FRAMES_REQUIRED = 6     // 6 × 128ms ≈ 0.8s 静音后自动停止
+const SILENCE_FRAMES_REQUIRED = 10    // 10 × 128ms ≈ 1.3s 静音后自动停止（容忍句间停顿）
 const VAD_GRACE_FRAMES = 8            // 录音开始后前 8 帧（~1s）不做 VAD 检测，等用户准备好
 
 // 音频管理器类 - PCM 实时录音模式（ScriptProcessorNode → 16kHz Int16 PCM）
