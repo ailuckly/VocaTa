@@ -1110,8 +1110,8 @@ export class VocaTaAIChat {
           throw new Error('WebSocket客户端未初始化')
         }
 
-        this.wsClient.startAudioRecording()
-
+        // 先获取麦克风 + 建立 ScriptProcessorNode，再发 audio_start
+        // 避免服务端 pipeline 空等音频导致 vad_eos 超时
         started = await this.audioManager.startRecording(this.wsClient, () => this.stopRequested)
         shouldCancel = this.stopRequested || !started
 
@@ -1123,6 +1123,9 @@ export class VocaTaAIChat {
           this.voiceState = 'idle'
           return false
         }
+
+        // 麦克风已就绪，现在通知服务端开始接收音频
+        this.wsClient.startAudioRecording()
 
         this.voiceState = 'recording'
         return true
