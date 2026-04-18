@@ -292,10 +292,11 @@ export class VocaTaWebSocketClient {
 
 // VAD 常量（ScriptProcessorNode 2048 帧 @ 16kHz = 128ms/帧）
 const PROC_BUFFER = 2048
-const SPEECH_THRESHOLD = 0.015        // RMS 超过此值 → 识别为说话
-const SILENCE_THRESHOLD = 0.010       // RMS 低于此值 → 识别为静音
-const MIN_SPEECH_FRAMES = 2           // 至少 2 帧真实语音才允许 VAD 触发（防误触）
+const SPEECH_THRESHOLD = 0.02         // RMS 超过此值 → 识别为说话（提高以减少噪音误触）
+const SILENCE_THRESHOLD = 0.01        // RMS 低于此值 → 识别为静音
+const MIN_SPEECH_FRAMES = 5           // 至少 5 帧真实语音才允许 VAD 触发（~640ms，防环境噪音误触）
 const SILENCE_FRAMES_REQUIRED = 6     // 6 × 128ms ≈ 0.8s 静音后自动停止
+const VAD_GRACE_FRAMES = 8            // 录音开始后前 8 帧（~1s）不做 VAD 检测，等用户准备好
 
 // 音频管理器类 - PCM 实时录音模式（ScriptProcessorNode → 16kHz Int16 PCM）
 export class AudioManager {
@@ -329,6 +330,7 @@ export class AudioManager {
   private speechFrameCount = 0
   private silenceFrameCount = 0
   private bargeInTriggered = false
+  private vadGraceRemaining = 0           // 录音启动后的冷却帧数
   private onVADSilenceCallback?: () => void
   private onBargeInCallback?: () => void
 
@@ -392,6 +394,7 @@ export class AudioManager {
     this.speechFrameCount = 0
     this.silenceFrameCount = 0
     this.bargeInTriggered = false
+    this.vadGraceRemaining = VAD_GRACE_FRAMES
   }
 
   // 延迟初始化AudioContext，在用户交互后调用
@@ -520,30 +523,35 @@ export class AudioManager {
           for (let i = 0; i < float32.length; i++) sumSq += float32[i] * float32[i]
           const rms = Math.sqrt(sumSq / float32.length)
 
-          // VAD + Barge-in（无论是否在监听模式都运行）
-          if (rms > SPEECH_THRESHOLD) {
-            this.hasSpeechStarted = true
-            this.speechFrameCount++
-            this.silenceFrameCount = 0
-            // Barge-in：AI 说话 & 麦克风处于监听模式时检测到用户说话
-            if (this.isAISpeaking && !this.bargeInTriggered) {
-              this.bargeInTriggered = true
-              this.onBargeInCallback?.()
-            }
-          } else if (this.hasSpeechStarted && this.speechFrameCount >= MIN_SPEECH_FRAMES) {
-            if (rms < SILENCE_THRESHOLD) {
-              this.silenceFrameCount++
-              // VAD 静音只在发送模式下触发（避免监听模式重复触发）
-              if (this.silenceFrameCount >= SILENCE_FRAMES_REQUIRED && !this.monitoringOnly) {
-                console.log('🔇 VAD: silence detected, switching to monitoring mode')
-                this.hasSpeechStarted = false
-                this.silenceFrameCount = 0
-                this.speechFrameCount = 0
-                this.onVADSilenceCallback?.()
-                return
-              }
-            } else {
+          // 冷却期：录音刚启动时跳过 VAD 检测（防止环境噪音误触发）
+          if (this.vadGraceRemaining > 0) {
+            this.vadGraceRemaining--
+          } else {
+            // VAD + Barge-in（无论是否在监听模式都运行）
+            if (rms > SPEECH_THRESHOLD) {
+              this.hasSpeechStarted = true
+              this.speechFrameCount++
               this.silenceFrameCount = 0
+              // Barge-in：AI 说话 & 麦克风处于监听模式时检测到用户说话
+              if (this.isAISpeaking && !this.bargeInTriggered) {
+                this.bargeInTriggered = true
+                this.onBargeInCallback?.()
+              }
+            } else if (this.hasSpeechStarted && this.speechFrameCount >= MIN_SPEECH_FRAMES) {
+              if (rms < SILENCE_THRESHOLD) {
+                this.silenceFrameCount++
+                // VAD 静音只在发送模式下触发（避免监听模式重复触发）
+                if (this.silenceFrameCount >= SILENCE_FRAMES_REQUIRED && !this.monitoringOnly) {
+                  console.log('🔇 VAD: silence detected, switching to monitoring mode')
+                  this.hasSpeechStarted = false
+                  this.silenceFrameCount = 0
+                  this.speechFrameCount = 0
+                  this.onVADSilenceCallback?.()
+                  return
+                }
+              } else {
+                this.silenceFrameCount = 0
+              }
             }
           }
 
@@ -657,6 +665,7 @@ export class AudioManager {
       this.silenceFrameCount = 0
       this.speechFrameCount = 0
       this.bargeInTriggered = false
+      this.vadGraceRemaining = VAD_GRACE_FRAMES  // 给用户时间准备说话
       console.log('▶️ 恢复录音模式')
     }
   }
