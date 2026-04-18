@@ -650,7 +650,8 @@ export class AudioManager {
 
   /** 恢复发送音频（从监听模式回到录音模式） */
   resumeRecording(): void {
-    if (this.recordingState === 'recording') {
+    // 仅在监听模式下恢复，防止重复调用重置 VAD 状态
+    if (this.recordingState === 'recording' && this.monitoringOnly) {
       this.monitoringOnly = false
       this.hasSpeechStarted = false
       this.silenceFrameCount = 0
