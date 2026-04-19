@@ -292,9 +292,9 @@ export class VocaTaWebSocketClient {
 
 // VAD 常量（ScriptProcessorNode 2048 帧 @ 16kHz = 128ms/帧）
 const PROC_BUFFER = 2048
-const SPEECH_THRESHOLD = 0.02         // RMS 超过此值 → 识别为说话（提高以减少噪音误触）
+const SPEECH_THRESHOLD = 0.03         // RMS 超过此值 → 识别为说话（提高以减少环境噪音误触）
 const SILENCE_THRESHOLD = 0.01        // RMS 低于此值 → 识别为静音
-const MIN_SPEECH_FRAMES = 5           // 至少 5 帧真实语音才允许 VAD 触发（~640ms，防环境噪音误触）
+const MIN_SPEECH_FRAMES = 8           // 至少 8 帧真实语音才允许 VAD 触发（~1s，进一步防误触）
 const SILENCE_FRAMES_REQUIRED = 10    // 10 × 128ms ≈ 1.3s 静音后自动停止（容忍句间停顿）
 const VAD_GRACE_FRAMES = 8            // 录音开始后前 8 帧（~1s）不做 VAD 检测，等用户准备好
 
@@ -331,6 +331,7 @@ export class AudioManager {
   private silenceFrameCount = 0
   private bargeInTriggered = false
   private vadGraceRemaining = 0           // 录音启动后的冷却帧数
+  private sttConfirmedSpeech = false      // STT 已返回有效识别结果（防止环境噪音误触 VAD）
   private onVADSilenceCallback?: () => void
   private onBargeInCallback?: () => void
 
@@ -395,6 +396,7 @@ export class AudioManager {
     this.silenceFrameCount = 0
     this.bargeInTriggered = false
     this.vadGraceRemaining = VAD_GRACE_FRAMES
+    this.sttConfirmedSpeech = false
   }
 
   // 延迟初始化AudioContext，在用户交互后调用
@@ -540,8 +542,10 @@ export class AudioManager {
             } else if (this.hasSpeechStarted && this.speechFrameCount >= MIN_SPEECH_FRAMES) {
               if (rms < SILENCE_THRESHOLD) {
                 this.silenceFrameCount++
-                // VAD 静音只在发送模式下触发（避免监听模式重复触发）
-                if (this.silenceFrameCount >= SILENCE_FRAMES_REQUIRED && !this.monitoringOnly) {
+                // VAD 静音触发条件：发送模式 + STT 已确认说话
+                if (this.silenceFrameCount >= SILENCE_FRAMES_REQUIRED
+                    && !this.monitoringOnly
+                    && this.sttConfirmedSpeech) {
                   console.log('🔇 VAD: silence detected, switching to monitoring mode')
                   this.hasSpeechStarted = false
                   this.silenceFrameCount = 0
@@ -652,12 +656,13 @@ export class AudioManager {
   pauseRecording(): void {
     if (this.recordingState === 'recording') {
       this.monitoringOnly = true
+      this.sttConfirmedSpeech = false  // 清除 STT 确认，下轮需重新确认
       console.log('⏸️ 切换为监听模式（barge-in 就绪）')
     }
   }
 
-  /** 恢复发送音频（从监听模式回到录音模式） */
-  resumeRecording(): void {
+  /** 恢复发送音频（从监听模式回到录音模式），返回是否实际恢复 */
+  resumeRecording(): boolean {
     // 仅在监听模式下恢复，防止重复调用重置 VAD 状态
     if (this.recordingState === 'recording' && this.monitoringOnly) {
       this.monitoringOnly = false
@@ -666,8 +671,11 @@ export class AudioManager {
       this.speechFrameCount = 0
       this.bargeInTriggered = false
       this.vadGraceRemaining = VAD_GRACE_FRAMES  // 给用户时间准备说话
+      this.sttConfirmedSpeech = false
       console.log('▶️ 恢复录音模式')
+      return true
     }
+    return false
   }
 
   setVADSilenceCallback(cb: (() => void) | undefined): void {
@@ -697,6 +705,11 @@ export class AudioManager {
 
   get muted(): boolean {
     return this.isMuted
+  }
+
+  /** STT 返回有效识别结果时调用，确认用户确实在说话（启用 VAD 静音检测） */
+  confirmSpeechFromSTT(): void {
+    this.sttConfirmedSpeech = true
   }
 
   async playAudio(audioBuffer: ArrayBuffer): Promise<void> {    try {
@@ -855,11 +868,11 @@ export class VocaTaAIChat {
       this.onAudioPlayCallback?.(isPlaying)
       // 同步 AI 说话状态给 AudioManager（用于 barge-in 检测）
       this.audioManager.setAISpeaking(isPlaying)
-      // 持续模式：TTS 播完后恢复录音（麦克风一直开着，只需 resume）
+      // 持续模式：TTS 播完后恢复录音（麦克风一直开着，只需 resume + 通知服务端）
       if (!isPlaying && this.isAudioCallActive && this.isContinuousModeActive) {
         setTimeout(() => {
-          if (this.isAudioCallActive) {
-            this.audioManager.resumeRecording()  // 从监听模式回到发送模式
+          if (this.isAudioCallActive && this.audioManager.resumeRecording()) {
+            this.wsClient?.startAudioRecording() // 只在实际恢复时才发 audio_start
           }
         }, 300)
       }
@@ -1026,6 +1039,11 @@ export class VocaTaAIChat {
 
     this.currentSTTText = message.text
     this.onSTTResultCallback?.(message.text, message.isFinal)
+
+    // STT 返回有效文本 → 确认用户确实在说话，启用 VAD 静音检测
+    if (message.text && message.text.trim().length > 0 && !message.isFinal) {
+      this.audioManager.confirmSpeechFromSTT()
+    }
   }
 
   private handleLLMTextStream(message: LLMTextStreamMessage): void {
@@ -1064,12 +1082,18 @@ export class VocaTaAIChat {
   private handleProcessComplete(message: CompleteMessage): void {
     console.log('✅ 处理完成:', message.message)
     // STT 无结果时 TTS 不播放，不会触发 onAudioPlay(false) → 手动恢复录音
+    // 用较长延迟（2s）防止空管线快速循环（噪音误触 → 空 STT → complete → 再触发）
     if (this.isAudioCallActive && this.isContinuousModeActive && !this.audioManager.playing) {
       setTimeout(() => {
-        if (this.isAudioCallActive) {
-          this.audioManager.resumeRecording()
+        if (!this.isAudioCallActive) return
+        // 优先尝试 resume（从监听模式恢复）
+        if (this.audioManager.resumeRecording()) {
+          this.wsClient?.startAudioRecording()
+        } else if (this.voiceState === 'idle') {
+          // 录音硬件已停止（如 handleError 导致），完整重启
+          this.startRecording().catch(err => console.error('❌ complete后重启录音失败:', err))
         }
-      }, 300)
+      }, 2000)
     }
   }
 
