@@ -192,3 +192,7 @@ Desktop.ini
 # local workspace artifacts
 /.codex
 /test.sh
+/.superpowers/
+
+# planning / progress docs
+/docs/superpowers/
