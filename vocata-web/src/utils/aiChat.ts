@@ -292,9 +292,9 @@ export class VocaTaWebSocketClient {
 
 // VAD 常量（ScriptProcessorNode 2048 帧 @ 16kHz = 128ms/帧）
 const PROC_BUFFER = 2048
-const SPEECH_THRESHOLD = 0.02         // RMS 超过此值 → 识别为说话（提高以减少噪音误触）
+const SPEECH_THRESHOLD = 0.03         // RMS 超过此值 → 识别为说话（提高以减少环境噪音误触）
 const SILENCE_THRESHOLD = 0.01        // RMS 低于此值 → 识别为静音
-const MIN_SPEECH_FRAMES = 5           // 至少 5 帧真实语音才允许 VAD 触发（~640ms，防环境噪音误触）
+const MIN_SPEECH_FRAMES = 8           // 至少 8 帧真实语音才允许 VAD 触发（~1s，进一步防误触）
 const SILENCE_FRAMES_REQUIRED = 10    // 10 × 128ms ≈ 1.3s 静音后自动停止（容忍句间停顿）
 const VAD_GRACE_FRAMES = 8            // 录音开始后前 8 帧（~1s）不做 VAD 检测，等用户准备好
 
@@ -1064,12 +1064,13 @@ export class VocaTaAIChat {
   private handleProcessComplete(message: CompleteMessage): void {
     console.log('✅ 处理完成:', message.message)
     // STT 无结果时 TTS 不播放，不会触发 onAudioPlay(false) → 手动恢复录音
+    // 用较长延迟（2s）防止空管线快速循环（噪音误触 → 空 STT → complete → 再触发）
     if (this.isAudioCallActive && this.isContinuousModeActive && !this.audioManager.playing) {
       setTimeout(() => {
         if (this.isAudioCallActive) {
           this.audioManager.resumeRecording()
         }
-      }, 300)
+      }, 2000)
     }
   }
 
