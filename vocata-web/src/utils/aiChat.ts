@@ -656,6 +656,7 @@ export class AudioManager {
   pauseRecording(): void {
     if (this.recordingState === 'recording') {
       this.monitoringOnly = true
+      this.sttConfirmedSpeech = false  // 清除 STT 确认，下轮需重新确认
       console.log('⏸️ 切换为监听模式（barge-in 就绪）')
     }
   }
