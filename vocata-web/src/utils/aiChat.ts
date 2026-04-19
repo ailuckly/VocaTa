@@ -660,8 +660,8 @@ export class AudioManager {
     }
   }
 
-  /** 恢复发送音频（从监听模式回到录音模式） */
-  resumeRecording(): void {
+  /** 恢复发送音频（从监听模式回到录音模式），返回是否实际恢复 */
+  resumeRecording(): boolean {
     // 仅在监听模式下恢复，防止重复调用重置 VAD 状态
     if (this.recordingState === 'recording' && this.monitoringOnly) {
       this.monitoringOnly = false
@@ -672,7 +672,9 @@ export class AudioManager {
       this.vadGraceRemaining = VAD_GRACE_FRAMES  // 给用户时间准备说话
       this.sttConfirmedSpeech = false
       console.log('▶️ 恢复录音模式')
+      return true
     }
+    return false
   }
 
   setVADSilenceCallback(cb: (() => void) | undefined): void {
@@ -868,9 +870,8 @@ export class VocaTaAIChat {
       // 持续模式：TTS 播完后恢复录音（麦克风一直开着，只需 resume + 通知服务端）
       if (!isPlaying && this.isAudioCallActive && this.isContinuousModeActive) {
         setTimeout(() => {
-          if (this.isAudioCallActive) {
-            this.audioManager.resumeRecording()  // 从监听模式回到发送模式
-            this.wsClient?.startAudioRecording() // 通知服务端创建新 audioSink
+          if (this.isAudioCallActive && this.audioManager.resumeRecording()) {
+            this.wsClient?.startAudioRecording() // 只在实际恢复时才发 audio_start
           }
         }, 300)
       }
@@ -1083,9 +1084,13 @@ export class VocaTaAIChat {
     // 用较长延迟（2s）防止空管线快速循环（噪音误触 → 空 STT → complete → 再触发）
     if (this.isAudioCallActive && this.isContinuousModeActive && !this.audioManager.playing) {
       setTimeout(() => {
-        if (this.isAudioCallActive) {
-          this.audioManager.resumeRecording()
-          this.wsClient?.startAudioRecording()  // 通知服务端创建新 audioSink
+        if (!this.isAudioCallActive) return
+        // 优先尝试 resume（从监听模式恢复）
+        if (this.audioManager.resumeRecording()) {
+          this.wsClient?.startAudioRecording()
+        } else if (this.voiceState === 'idle') {
+          // 录音硬件已停止（如 handleError 导致），完整重启
+          this.startRecording().catch(err => console.error('❌ complete后重启录音失败:', err))
         }
       }, 2000)
     }
