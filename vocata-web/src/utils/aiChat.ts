@@ -331,6 +331,7 @@ export class AudioManager {
   private silenceFrameCount = 0
   private bargeInTriggered = false
   private vadGraceRemaining = 0           // 录音启动后的冷却帧数
+  private sttConfirmedSpeech = false      // STT 已返回有效识别结果（防止环境噪音误触 VAD）
   private onVADSilenceCallback?: () => void
   private onBargeInCallback?: () => void
 
@@ -395,6 +396,7 @@ export class AudioManager {
     this.silenceFrameCount = 0
     this.bargeInTriggered = false
     this.vadGraceRemaining = VAD_GRACE_FRAMES
+    this.sttConfirmedSpeech = false
   }
 
   // 延迟初始化AudioContext，在用户交互后调用
@@ -540,8 +542,10 @@ export class AudioManager {
             } else if (this.hasSpeechStarted && this.speechFrameCount >= MIN_SPEECH_FRAMES) {
               if (rms < SILENCE_THRESHOLD) {
                 this.silenceFrameCount++
-                // VAD 静音只在发送模式下触发（避免监听模式重复触发）
-                if (this.silenceFrameCount >= SILENCE_FRAMES_REQUIRED && !this.monitoringOnly) {
+                // VAD 静音触发条件：发送模式 + STT 已确认说话
+                if (this.silenceFrameCount >= SILENCE_FRAMES_REQUIRED
+                    && !this.monitoringOnly
+                    && this.sttConfirmedSpeech) {
                   console.log('🔇 VAD: silence detected, switching to monitoring mode')
                   this.hasSpeechStarted = false
                   this.silenceFrameCount = 0
@@ -666,6 +670,7 @@ export class AudioManager {
       this.speechFrameCount = 0
       this.bargeInTriggered = false
       this.vadGraceRemaining = VAD_GRACE_FRAMES  // 给用户时间准备说话
+      this.sttConfirmedSpeech = false
       console.log('▶️ 恢复录音模式')
     }
   }
@@ -697,6 +702,11 @@ export class AudioManager {
 
   get muted(): boolean {
     return this.isMuted
+  }
+
+  /** STT 返回有效识别结果时调用，确认用户确实在说话（启用 VAD 静音检测） */
+  confirmSpeechFromSTT(): void {
+    this.sttConfirmedSpeech = true
   }
 
   async playAudio(audioBuffer: ArrayBuffer): Promise<void> {    try {
@@ -1026,6 +1036,11 @@ export class VocaTaAIChat {
 
     this.currentSTTText = message.text
     this.onSTTResultCallback?.(message.text, message.isFinal)
+
+    // STT 返回有效文本 → 确认用户确实在说话，启用 VAD 静音检测
+    if (message.text && message.text.trim().length > 0 && !message.isFinal) {
+      this.audioManager.confirmSpeechFromSTT()
+    }
   }
 
   private handleLLMTextStream(message: LLMTextStreamMessage): void {
