@@ -865,11 +865,12 @@ export class VocaTaAIChat {
       this.onAudioPlayCallback?.(isPlaying)
       // 同步 AI 说话状态给 AudioManager（用于 barge-in 检测）
       this.audioManager.setAISpeaking(isPlaying)
-      // 持续模式：TTS 播完后恢复录音（麦克风一直开着，只需 resume）
+      // 持续模式：TTS 播完后恢复录音（麦克风一直开着，只需 resume + 通知服务端）
       if (!isPlaying && this.isAudioCallActive && this.isContinuousModeActive) {
         setTimeout(() => {
           if (this.isAudioCallActive) {
             this.audioManager.resumeRecording()  // 从监听模式回到发送模式
+            this.wsClient?.startAudioRecording() // 通知服务端创建新 audioSink
           }
         }, 300)
       }
@@ -1084,6 +1085,7 @@ export class VocaTaAIChat {
       setTimeout(() => {
         if (this.isAudioCallActive) {
           this.audioManager.resumeRecording()
+          this.wsClient?.startAudioRecording()  // 通知服务端创建新 audioSink
         }
       }, 2000)
     }
