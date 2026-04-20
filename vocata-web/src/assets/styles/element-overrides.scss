@@ -1,0 +1,23 @@
+:root {
+  --el-color-primary: var(--vt-brand);
+  --el-color-primary-light-3: color-mix(in srgb, var(--vt-brand) 78%, white);
+  --el-color-primary-light-5: color-mix(in srgb, var(--vt-brand) 62%, white);
+  --el-color-primary-light-7: color-mix(in srgb, var(--vt-brand) 46%, white);
+  --el-color-primary-light-8: color-mix(in srgb, var(--vt-brand) 34%, white);
+  --el-color-primary-light-9: color-mix(in srgb, var(--vt-brand) 18%, white);
+  --el-border-color: var(--vt-line);
+  --el-border-color-light: color-mix(in srgb, var(--vt-line) 64%, white);
+  --el-text-color-primary: var(--vt-text);
+  --el-text-color-regular: var(--vt-text-soft);
+  --el-bg-color: var(--vt-surface);
+  --el-bg-color-page: var(--vt-bg);
+  --el-fill-color-light: var(--vt-surface-muted);
+  --el-border-radius-base: 16px;
+}
+
+.el-button,
+.el-input__wrapper,
+.el-textarea__inner,
+.el-select__wrapper {
+  box-shadow: none;
+}

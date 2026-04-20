@@ -1,5 +1,6 @@
-import type { RouteRecordRaw } from "vue-router"
+import type { RouteRecordRaw } from 'vue-router'
 import BasicLayout from '@/layouts/BasicLayout.vue'
+
 const routes: RouteRecordRaw[] = [
   {
     path: '/',
@@ -10,31 +11,39 @@ const routes: RouteRecordRaw[] = [
         path: '/searchRole',
         component: () => import('@/views/SearchRole.vue'),
         meta: {
-          title: '探索'
-        }
+          title: '探索',
+        },
       },
       {
         path: '/newRole',
         component: () => import('@/views/NewRole.vue'),
         meta: {
-          title: '新建角色'
-        }
-      }, {
+          title: '新建角色',
+        },
+      },
+      {
+        path: '/profile',
+        component: () => import('@/views/ProfilePage.vue'),
+        meta: {
+          title: '我的空间',
+        },
+      },
+      {
         path: '/chat/:conversationUuid',
         component: () => import('@/views/ChatPage.vue'),
         meta: {
-          title: '对话'
-        }
-      }
-    ]
+          title: '对话',
+        },
+      },
+    ],
   },
   {
     path: '/login',
     component: () => import('@/views/LoginPage.vue'),
     meta: {
-      title: '登录'
-    }
-  }
+      title: '登录',
+    },
+  },
 ]
 
 export default routes

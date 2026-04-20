@@ -1,0 +1,58 @@
+:root {
+  color-scheme: light;
+  --vt-bg: oklch(98% 0.01 190);
+  --vt-surface: oklch(100% 0 0);
+  --vt-surface-muted: oklch(97% 0.01 190);
+  --vt-line: oklch(90% 0.02 190);
+  --vt-text: oklch(28% 0.03 210);
+  --vt-text-soft: oklch(48% 0.03 210);
+  --vt-brand: oklch(74% 0.09 183);
+  --vt-brand-strong: oklch(64% 0.11 183);
+  --vt-accent: oklch(74% 0.14 32);
+  --vt-radius-xl: 28px;
+  --vt-radius-lg: 20px;
+  --vt-shadow: 0 24px 60px color-mix(in srgb, var(--vt-brand) 12%, transparent);
+  --vt-font-body:
+    'PingFang SC',
+    'Hiragino Sans GB',
+    'Microsoft YaHei',
+    'Noto Sans CJK SC',
+    sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  min-height: 100vh;
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--vt-bg);
+  color: var(--vt-text);
+  font-family: var(--vt-font-body);
+}
+
+body {
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}

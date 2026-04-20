@@ -2,6 +2,12 @@
   <div :class="['login-page', layoutClass]">
     <div class="login-box">
       <div class="left">
+        <div class="brand-copy">
+          <p class="brand-copy__eyebrow">Bright companion space</p>
+          <h1>把每一次对话留在更舒服的空间里</h1>
+          <span>登录后继续你最近的聊天，或者创建一个新的陪伴角色。</span>
+        </div>
+
         <div class="title">
           <img src="@/assets/images/logo-text.png" alt="语Ta Logo" />
         </div>
@@ -125,7 +131,7 @@ const registerForm = ref<RegisterParams>({
 const codeButtonText = ref('发送')
 const isCodeButtonDisabled = ref(false)
 const fullscreenLoading = ref(false)
-const countdownTimer = ref<number>()
+const countdownTimer = ref<ReturnType<typeof setInterval>>()
 
 // 计算属性
 const isLoginTab = computed(() => activeTab.value === 'login')
@@ -336,12 +342,14 @@ const handleRegister = async (): Promise<void> => {
   flex: 1;
   width: 50%;
   box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
 
   .title {
     font-size: 0.4rem;
     font-weight: bold;
     text-align: center;
-    padding: 0.5rem 0 0;
+    padding: 0.2rem 0 0;
 
     img {
       width: 1.2rem;
@@ -418,6 +426,31 @@ const handleRegister = async (): Promise<void> => {
       }
     }
   }
+}
+
+.brand-copy {
+  display: grid;
+  gap: 0.1rem;
+  padding: 0.4rem 0.7rem 0;
+}
+
+.brand-copy__eyebrow,
+.brand-copy span {
+  margin: 0;
+  color: #6b7a7a;
+}
+
+.brand-copy__eyebrow {
+  font-size: 0.14rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.brand-copy h1 {
+  margin: 0;
+  max-width: 7ch;
+  font-size: 0.42rem;
+  line-height: 1.05;
 }
 
 .right {
