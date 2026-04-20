@@ -17,6 +17,8 @@
     "build:production": "vite build --mode production",
     "preview": "vite preview",
     "build-only": "vite build",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "type-check": "vue-tsc --build",
     "lint": "eslint . --fix",
     "format": "prettier --write src/"
@@ -38,9 +40,11 @@
     "@vitejs/plugin-vue": "^6.0.1",
     "@vue/eslint-config-prettier": "^10.2.0",
     "@vue/eslint-config-typescript": "^14.6.0",
+    "@vue/test-utils": "^2.4.6",
     "@vue/tsconfig": "^0.7.0",
     "eslint": "^9.31.0",
     "eslint-plugin-vue": "~10.3.0",
+    "jsdom": "^26.1.0",
     "jiti": "^2.4.2",
     "npm-run-all2": "^8.0.4",
     "postcss-pxtorem": "^6.1.0",
@@ -49,6 +53,7 @@
     "typescript": "~5.8.0",
     "vite": "^7.0.6",
     "vite-plugin-vue-devtools": "^8.0.0",
+    "vitest": "^3.2.4",
     "vue-tsc": "^3.0.4"
   }
 }
