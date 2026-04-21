@@ -211,7 +211,7 @@ onMounted(async () => {
 .discovery {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 32px;
   max-width: 960px;
   margin: 0 auto;
   padding: 32px 24px 48px;
@@ -249,8 +249,8 @@ onMounted(async () => {
 
 .hero__main {
   display: grid;
-  grid-template-columns: 1fr 340px;
-  min-height: 340px;
+  grid-template-columns: 1fr 380px;
+  height: 420px;
   position: relative;
 }
 
@@ -259,8 +259,8 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 12px;
-  padding: 36px 40px;
+  gap: 14px;
+  padding: 40px 44px;
   position: relative;
   z-index: 1;
 }
@@ -278,39 +278,39 @@ onMounted(async () => {
 
 .hero__name {
   margin: 0;
-  font-size: 32px;
+  font-size: 36px;
   font-weight: 800;
-  line-height: 1.15;
-  letter-spacing: -0.3px;
+  line-height: 1.12;
+  letter-spacing: -0.4px;
   color: var(--vt-text);
 }
 
 .hero__desc {
   margin: 0;
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1.7;
   color: var(--vt-text-soft);
   display: -webkit-box;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  max-width: 32ch;
+  max-width: 34ch;
 }
 
 .hero__actions {
   display: flex;
   align-items: center;
   gap: 14px;
-  margin-top: 4px;
+  margin-top: 8px;
 }
 
 .hero__cta {
-  padding: 10px 24px;
+  padding: 12px 28px;
   border: 0;
   border-radius: 999px;
   background: var(--vt-brand);
   color: white;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
   cursor: pointer;
   transition: background 0.15s, transform 0.1s;
@@ -320,22 +320,22 @@ onMounted(async () => {
 }
 
 .hero__meta {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--vt-text-muted);
 }
 
-/* 右侧图片 */
+/* 右侧图片 — 关键：用 grid 子项撑满高度 */
 .hero__visual {
   position: relative;
   overflow: hidden;
+  min-height: 0;
 
   img {
-    position: absolute;
-    inset: 0;
     width: 100%;
     height: 100%;
     object-fit: cover;
     object-position: top center;
+    display: block;
   }
 }
 
@@ -345,8 +345,8 @@ onMounted(async () => {
   background: linear-gradient(
     to right,
     var(--vt-surface) 0%,
-    color-mix(in srgb, var(--vt-surface) 40%, transparent) 30%,
-    transparent 100%
+    color-mix(in srgb, var(--vt-surface) 50%, transparent) 25%,
+    transparent 60%
   );
   pointer-events: none;
 }
@@ -432,6 +432,7 @@ onMounted(async () => {
   gap: 6px;
   overflow-x: auto;
   scrollbar-width: none;
+  padding-top: 8px;
 
   &::-webkit-scrollbar { display: none; }
 }
@@ -561,15 +562,15 @@ onMounted(async () => {
 
 /* ── 响应式 ──────────────────────────────────────────────── */
 @media (max-width: 768px) {
-  .discovery { padding: 20px 16px 40px; gap: 20px; }
+  .discovery { padding: 20px 16px 40px; gap: 24px; }
 
   .hero__main {
     grid-template-columns: 1fr;
-    min-height: auto;
+    height: auto;
   }
 
   .hero__visual {
-    height: 220px;
+    height: 240px;
     order: -1;
   }
 
@@ -578,7 +579,7 @@ onMounted(async () => {
   }
 
   .hero__copy { padding: 24px; }
-  .hero__name { font-size: 24px; }
+  .hero__name { font-size: 26px; }
 
   .content-grid {
     grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
