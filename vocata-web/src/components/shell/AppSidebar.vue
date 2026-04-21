@@ -21,10 +21,6 @@
         <el-icon><EditPen /></el-icon>
         <span>创建角色</span>
       </RouterLink>
-      <RouterLink to="/profile" class="app-sidebar__nav-item">
-        <el-icon><User /></el-icon>
-        <span>我的空间</span>
-      </RouterLink>
     </nav>
 
     <div class="app-sidebar__divider"></div>
@@ -55,19 +51,35 @@
       <p v-else class="app-sidebar__history-empty">还没有对话记录</p>
     </div>
 
-    <!-- 底部：用户 + 主题 -->
+    <!-- 底部：用户菜单 -->
     <div class="app-sidebar__footer">
-      <RouterLink to="/profile" class="app-sidebar__user">
+      <button class="app-sidebar__user" @click="userMenuOpen = !userMenuOpen" :class="{ 'is-open': userMenuOpen }">
         <div class="app-sidebar__user-avatar">
           <img v-if="userInfo.avatar" :src="userInfo.avatar" :alt="userInfo.nickname" />
           <span v-else>{{ userInfo.nickname.slice(0, 1) }}</span>
         </div>
         <span class="app-sidebar__user-name">{{ userInfo.nickname }}</span>
-      </RouterLink>
-      <button class="app-sidebar__theme-btn" @click="toggleTheme" :title="isDark ? '浅色模式' : '深色模式'">
-        <el-icon v-if="isDark"><Sunny /></el-icon>
-        <el-icon v-else><Moon /></el-icon>
+        <el-icon class="app-sidebar__user-chevron"><ArrowUp /></el-icon>
       </button>
+
+      <!-- 弹出菜单 -->
+      <Transition name="user-menu">
+        <div v-if="userMenuOpen" class="app-sidebar__user-menu">
+          <RouterLink to="/profile" class="app-sidebar__user-menu-item" @click="userMenuOpen = false">
+            <el-icon><User /></el-icon>
+            <span>个人资料</span>
+          </RouterLink>
+          <RouterLink to="/settings" class="app-sidebar__user-menu-item" @click="userMenuOpen = false">
+            <el-icon><Setting /></el-icon>
+            <span>设置</span>
+          </RouterLink>
+          <div class="app-sidebar__user-menu-divider"></div>
+          <button class="app-sidebar__user-menu-item is-danger" @click="handleLogout">
+            <el-icon><SwitchButton /></el-icon>
+            <span>退出登录</span>
+          </button>
+        </div>
+      </Transition>
     </div>
 
     <!-- 移动端关闭按钮 -->
@@ -82,6 +94,7 @@ import { userApi } from '@/api/modules/user'
 import { chatHistoryStore } from '@/store'
 import { isMobile } from '@/utils/isMobile'
 import { useTheme } from '@/composables/useTheme'
+import { removeToken } from '@/utils/token'
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
@@ -92,15 +105,23 @@ const router = useRouter()
 const route = useRoute()
 const isMobileDevice = isMobile()
 const historyStore = chatHistoryStore()
-const { isDark, toggle: toggleTheme } = useTheme()
+const { isDark } = useTheme()
 
 const userInfo = ref({ nickname: '用户', avatar: '' })
+const userMenuOpen = ref(false)
 const chatHistory = computed(() => historyStore.chatHistory.slice(0, 12))
 const activeConversationUuid = computed(() =>
   route.path.startsWith('/chat/') ? String(route.params.conversationUuid) : ''
 )
 
 const openConversation = (uuid: string) => router.push(`/chat/${uuid}`)
+
+const handleLogout = async () => {
+  userMenuOpen.value = false
+  try { await userApi.logout() } catch {}
+  removeToken()
+  router.push('/login')
+}
 
 onMounted(async () => {
   try {
@@ -296,10 +317,8 @@ onMounted(async () => {
 
 /* Footer */
 .app-sidebar__footer {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
+  position: relative;
+  padding: 10px 8px;
   border-top: 1px solid var(--vt-line-subtle);
   flex-shrink: 0;
 }
@@ -308,20 +327,22 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex: 1;
-  min-width: 0;
-  padding: 6px 8px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
   border-radius: var(--vt-radius-sm);
-  text-decoration: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
   transition: background 0.12s;
 
-  &:hover { background: var(--vt-surface-overlay); }
+  &:hover, &.is-open { background: var(--vt-surface-overlay); }
 }
 
 .app-sidebar__user-avatar {
   display: grid;
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   flex-shrink: 0;
   place-items: center;
   border-radius: 50%;
@@ -335,6 +356,7 @@ onMounted(async () => {
 }
 
 .app-sidebar__user-name {
+  flex: 1;
   font-size: 13px;
   font-weight: 500;
   color: var(--vt-text);
@@ -343,21 +365,61 @@ onMounted(async () => {
   white-space: nowrap;
 }
 
-.app-sidebar__theme-btn {
-  display: grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  flex-shrink: 0;
-  border: 0;
-  border-radius: var(--vt-radius-sm);
-  background: transparent;
+.app-sidebar__user-chevron {
+  font-size: 12px;
   color: var(--vt-text-muted);
-  font-size: 16px;
-  cursor: pointer;
-  transition: background 0.12s, color 0.12s;
+  flex-shrink: 0;
+  transition: transform 0.2s;
 
-  &:hover { background: var(--vt-surface-overlay); color: var(--vt-text); }
+  .is-open & { transform: rotate(180deg); }
+}
+
+/* User popup menu */
+.app-sidebar__user-menu {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 8px;
+  right: 8px;
+  background: var(--vt-surface);
+  border: 1px solid var(--vt-line);
+  border-radius: var(--vt-radius-md);
+  box-shadow: var(--vt-shadow-md);
+  overflow: hidden;
+  z-index: 50;
+}
+
+.user-menu-enter-active, .user-menu-leave-active {
+  transition: opacity 0.15s, transform 0.15s;
+}
+.user-menu-enter-from, .user-menu-leave-to {
+  opacity: 0;
+  transform: translateY(6px);
+}
+
+.app-sidebar__user-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 14px;
+  border: 0;
+  background: transparent;
+  color: var(--vt-text);
+  font-size: 14px;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.12s;
+
+  .el-icon { font-size: 15px; color: var(--vt-text-soft); }
+
+  &:hover { background: var(--vt-surface-overlay); }
+  &.is-danger { color: var(--vt-danger); .el-icon { color: var(--vt-danger); } }
+}
+
+.app-sidebar__user-menu-divider {
+  height: 1px;
+  background: var(--vt-line-subtle);
+  margin: 2px 0;
 }
 
 /* Mobile close */
