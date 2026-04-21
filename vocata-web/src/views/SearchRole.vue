@@ -1,100 +1,108 @@
 <template>
-  <div class="discovery-page">
+  <div class="discovery">
+    <!-- ── 页面标题 ──────────────────────────────────────── -->
+    <div class="discovery__header">
+      <h1 class="discovery__title">探索角色</h1>
+      <p class="discovery__subtitle">找到今天适合开口的陪伴对象，立刻进入对话</p>
+    </div>
 
-    <!-- ── Hero Banner ─────────────────────────────────────── -->
-    <section class="discovery-hero" v-if="heroRole">
-      <!-- 右侧大图 -->
-      <div class="discovery-hero__image">
-        <Transition name="hero-fade">
-          <img
-            :key="heroRole.id"
-            :src="heroRole.avatarUrl"
-            :alt="heroRole.name || ''"
-            @error="onAvatarError($event, heroRole.name || '?')"
-          />
-        </Transition>
-        <div class="discovery-hero__image-overlay"></div>
-      </div>
-      <!-- 左侧文案 -->
-      <div class="discovery-hero__copy">
-        <p class="discovery-hero__eyebrow">精选角色</p>
-        <h1 class="discovery-hero__title">{{ heroRole.name }}</h1>
-        <p class="discovery-hero__desc">{{ heroRole.greeting || heroRole.description || '开始一段真实的陪伴对话' }}</p>
-        <div class="discovery-hero__actions">
-          <button class="discovery-hero__cta" @click="startConversation(heroRole.id)">
-            立即体验
-          </button>
-          <span class="discovery-hero__meta" v-if="heroRole.chatCount">
-            {{ heroRole.chatCount.toLocaleString() }} 次对话
-          </span>
+    <!-- ── Hero Banner（含角色切换） ─────────────────────── -->
+    <section class="hero" v-if="heroRole">
+      <div class="hero__main">
+        <!-- 左：文案 -->
+        <div class="hero__copy">
+          <span class="hero__badge">精选推荐</span>
+          <h2 class="hero__name">{{ heroRole.name }}</h2>
+          <p class="hero__desc">{{ heroRole.greeting || heroRole.description || '开始一段真实的陪伴对话' }}</p>
+          <div class="hero__actions">
+            <button class="hero__cta" @click="startConversation(heroRole.id)">立即体验</button>
+            <span class="hero__meta" v-if="heroRole.chatCount">{{ heroRole.chatCount.toLocaleString() }} 次对话</span>
+          </div>
+        </div>
+        <!-- 右：角色图 -->
+        <div class="hero__visual">
+          <Transition name="hero-img">
+            <img
+              :key="heroRole.id"
+              :src="heroRole.avatarUrl"
+              :alt="heroRole.name || ''"
+              @error="onAvatarError($event, heroRole.name || '?')"
+            />
+          </Transition>
+          <div class="hero__visual-fade"></div>
         </div>
       </div>
-    </section>
 
-    <!-- ── Carousel 精选横向列表 ───────────────────────────── -->
-    <section class="discovery-carousel" v-if="featuredRoles.length">
-      <div class="discovery-carousel__track" ref="carouselRef">
+      <!-- 角色切换区（Banner 内部底部） -->
+      <div class="hero__switcher" v-if="featuredRoles.length > 1">
         <button
-          v-for="role in featuredRoles"
-          :key="role.id"
-          class="discovery-carousel__item"
-          :class="{ 'is-active': heroRole?.id === role.id }"
-          @click="selectHero(role)"
-        >
-          <div class="discovery-carousel__thumb">
+          class="hero__switcher-arrow"
+          @click="switchHero(-1)"
+          :disabled="heroIndex <= 0"
+          aria-label="上一个"
+        >‹</button>
+        <div class="hero__switcher-track">
+          <button
+            v-for="(role, i) in featuredRoles"
+            :key="role.id"
+            class="hero__switcher-item"
+            :class="{ 'is-active': heroIndex === i }"
+            @click="heroIndex = i"
+          >
             <img
               :src="role.avatarUrl"
               :alt="role.name || ''"
               @error="onAvatarError($event, role.name || '?')"
             />
-          </div>
-          <span>{{ role.name }}</span>
-        </button>
+          </button>
+        </div>
+        <button
+          class="hero__switcher-arrow"
+          @click="switchHero(1)"
+          :disabled="heroIndex >= featuredRoles.length - 1"
+          aria-label="下一个"
+        >›</button>
       </div>
     </section>
 
-    <!-- ── Tab 分类栏 ──────────────────────────────────────── -->
-    <nav class="discovery-tabs">
+    <!-- ── 分类 Tabs ─────────────────────────────────────── -->
+    <nav class="category-tabs">
       <button
         v-for="tab in TABS"
         :key="tab.value"
-        class="discovery-tabs__item"
+        class="category-tabs__item"
         :class="{ 'is-active': activeTab === tab.value }"
         @click="selectTab(tab.value)"
-      >
-        {{ tab.label }}
-      </button>
+      >{{ tab.label }}</button>
     </nav>
 
-    <!-- ── 角色卡片网格 ────────────────────────────────────── -->
-    <section class="discovery-grid">
+    <!-- ── 内容卡片网格 ──────────────────────────────────── -->
+    <section class="content-grid">
       <div
         v-for="role in roleList"
         :key="role.id"
-        class="discovery-card"
+        class="content-card"
         @click="startConversation(role.id)"
       >
-        <div class="discovery-card__media">
+        <div class="content-card__media">
           <img
             :src="role.avatarUrl"
             :alt="role.name || ''"
             @error="onAvatarError($event, role.name || '?')"
           />
-          <div class="discovery-card__overlay"></div>
-          <div class="discovery-card__info">
+          <div class="content-card__gradient"></div>
+          <div class="content-card__label">
             <strong>{{ role.name }}</strong>
             <span v-if="role.chatCount">{{ role.chatCount.toLocaleString() }} 次对话</span>
           </div>
         </div>
-        <p class="discovery-card__desc">{{ role.greeting || role.description || '开始一段对话' }}</p>
+        <p class="content-card__desc">{{ role.greeting || role.description || '开始一段对话' }}</p>
       </div>
     </section>
 
     <!-- 加载更多 -->
-    <div v-if="hasMore" class="discovery-more">
-      <button @click="loadMore" :disabled="loading">
-        {{ loading ? '加载中…' : '加载更多' }}
-      </button>
+    <div v-if="hasMore" class="discovery__more">
+      <button @click="loadMore" :disabled="loading">{{ loading ? '加载中…' : '加载更多' }}</button>
     </div>
 
     <RoleDialog :item="roleSelected" v-if="infoShow && roleSelected" @close="infoShow = false" />
@@ -107,7 +115,7 @@ import { chatHistoryStore } from '@/store'
 import type { roleInfo } from '@/types/common'
 import { onAvatarError } from '@/utils/avatar'
 import { ElMessage } from 'element-plus'
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import RoleDialog from './components/RoleDialog.vue'
 
@@ -125,24 +133,23 @@ const TABS = [
   { label: '科幻', value: '科幻' },
 ]
 
-// 精选 & Hero
+// ── 精选 & Hero ──────────────────────────────────────────
 const featuredRoles = ref<roleInfo[]>([])
-const heroRole = ref<roleInfo | null>(null)
-const carouselRef = ref<HTMLElement | null>(null)
+const heroIndex = ref(0)
+const heroRole = computed(() => featuredRoles.value[heroIndex.value] ?? null)
 
-const selectHero = (role: roleInfo) => {
-  heroRole.value = role
+const switchHero = (dir: number) => {
+  const next = heroIndex.value + dir
+  if (next >= 0 && next < featuredRoles.value.length) heroIndex.value = next
 }
 
-// 角色列表
+// ── 角色列表 ─────────────────────────────────────────────
 const roleList = ref<roleInfo[]>([])
 const total = ref(0)
 const pageNum = ref(1)
 const pageSize = 15
 const loading = ref(false)
 const hasMore = computed(() => roleList.value.length < total.value)
-
-// Tab
 const activeTab = ref('')
 
 const getRoleList = async (reset = false) => {
@@ -155,11 +162,7 @@ const getRoleList = async (reset = false) => {
       orderDirection: 'desc',
       tags: activeTab.value ? [activeTab.value] : undefined,
     })
-    if (reset) {
-      roleList.value = res.data.list
-    } else {
-      roleList.value = [...roleList.value, ...res.data.list]
-    }
+    roleList.value = reset ? res.data.list : [...roleList.value, ...res.data.list]
     total.value = res.data.total
   } finally {
     loading.value = false
@@ -178,7 +181,7 @@ const loadMore = async () => {
   await getRoleList(false)
 }
 
-// 对话框
+// ── 对话 ─────────────────────────────────────────────────
 const roleSelected = ref<roleInfo>()
 const infoShow = ref(false)
 
@@ -200,120 +203,114 @@ onMounted(async () => {
     getRoleList(true),
   ])
   featuredRoles.value = featuredRes.data
-  if (featuredRes.data.length) heroRole.value = featuredRes.data[0]
 })
 </script>
 
 <style lang="scss" scoped>
-/* ── 页面容器 ─────────────────────────────────────────────── */
-.discovery-page {
+/* ── 版心 ─────────────────────────────────────────────────── */
+.discovery {
   display: flex;
   flex-direction: column;
-  gap: 28px;
-  width: 100%;
-  max-width: 1280px;
+  gap: 24px;
+  max-width: 960px;
   margin: 0 auto;
-  padding: 24px 24px 40px;
+  padding: 32px 24px 48px;
+}
+
+/* ── 页面标题 ─────────────────────────────────────────────── */
+.discovery__header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.discovery__title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--vt-text);
+}
+
+.discovery__subtitle {
+  margin: 0;
+  font-size: 14px;
+  color: var(--vt-text-muted);
 }
 
 /* ── Hero Banner ─────────────────────────────────────────── */
-.discovery-hero {
-  position: relative;
-  display: grid;
-  grid-template-columns: 1fr 420px;
-  align-items: center;
-  gap: 0;
-  min-height: 420px;
+.hero {
+  display: flex;
+  flex-direction: column;
   border-radius: 20px;
   overflow: hidden;
   background: var(--vt-surface);
   border: 1px solid var(--vt-line);
 }
 
-/* 右侧图片区 */
-.discovery-hero__image {
-  position: absolute;
-  inset: 0;
-  left: auto;
-  width: 420px;
-  right: 0;
-
-  img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    object-position: top center;
-    display: block;
-  }
-}
-
-.discovery-hero__image-overlay {
-  position: absolute;
-  inset: 0;
-  /* 左侧渐变遮罩，让文字区域清晰 */
-  background: linear-gradient(
-    to right,
-    var(--vt-surface) 0%,
-    color-mix(in srgb, var(--vt-surface) 80%, transparent) 50%,
-    transparent 100%
-  );
+.hero__main {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  min-height: 340px;
+  position: relative;
 }
 
 /* 左侧文案 */
-.discovery-hero__copy {
-  position: relative;
-  z-index: 1;
+.hero__copy {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding: 48px 48px 48px 48px;
-  max-width: 480px;
+  justify-content: center;
+  gap: 12px;
+  padding: 36px 40px;
+  position: relative;
+  z-index: 1;
 }
 
-.discovery-hero__eyebrow {
-  margin: 0;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+.hero__badge {
+  align-self: flex-start;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--vt-brand-soft);
   color: var(--vt-brand);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
 }
 
-.discovery-hero__title {
+.hero__name {
   margin: 0;
-  font-size: clamp(28px, 3vw, 42px);
+  font-size: 32px;
   font-weight: 800;
-  line-height: 1.1;
-  letter-spacing: -0.5px;
+  line-height: 1.15;
+  letter-spacing: -0.3px;
   color: var(--vt-text);
 }
 
-.discovery-hero__desc {
+.hero__desc {
   margin: 0;
-  font-size: 15px;
+  font-size: 14px;
   line-height: 1.7;
   color: var(--vt-text-soft);
   display: -webkit-box;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  max-width: 36ch;
+  max-width: 32ch;
 }
 
-.discovery-hero__actions {
+.hero__actions {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 14px;
   margin-top: 4px;
 }
 
-.discovery-hero__cta {
-  padding: 12px 28px;
+.hero__cta {
+  padding: 10px 24px;
   border: 0;
   border-radius: 999px;
   background: var(--vt-brand);
   color: white;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
   cursor: pointer;
   transition: background 0.15s, transform 0.1s;
@@ -322,78 +319,95 @@ onMounted(async () => {
   &:active { transform: scale(0.98); }
 }
 
-.discovery-hero__meta {
-  font-size: 13px;
+.hero__meta {
+  font-size: 12px;
   color: var(--vt-text-muted);
 }
 
-/* Hero 图片切换动画 */
-.hero-fade-enter-active,
-.hero-fade-leave-active {
-  transition: opacity 0.4s ease;
+/* 右侧图片 */
+.hero__visual {
+  position: relative;
+  overflow: hidden;
+
+  img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: top center;
+  }
+}
+
+.hero__visual-fade {
   position: absolute;
   inset: 0;
+  background: linear-gradient(
+    to right,
+    var(--vt-surface) 0%,
+    color-mix(in srgb, var(--vt-surface) 40%, transparent) 30%,
+    transparent 100%
+  );
+  pointer-events: none;
 }
-.hero-fade-enter-from,
-.hero-fade-leave-to { opacity: 0; }
 
-/* ── Carousel ────────────────────────────────────────────── */
-.discovery-carousel {
-  overflow: hidden;
+/* 图片切换动画 */
+.hero-img-enter-active,
+.hero-img-leave-active {
+  transition: opacity 0.35s ease;
 }
+.hero-img-enter-from,
+.hero-img-leave-to { opacity: 0; }
+.hero-img-leave-active { position: absolute; inset: 0; }
 
-.discovery-carousel__track {
+/* ── 角色切换区（Banner 内部底部） ────────────────────────── */
+.hero__switcher {
   display: flex;
-  gap: 12px;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--vt-line-subtle);
+  background: var(--vt-surface);
+}
+
+.hero__switcher-arrow {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border: 1px solid var(--vt-line);
+  border-radius: 50%;
+  background: var(--vt-surface);
+  color: var(--vt-text-soft);
+  font-size: 16px;
+  cursor: pointer;
+  transition: background 0.12s;
+
+  &:hover:not(:disabled) { background: var(--vt-surface-overlay); }
+  &:disabled { opacity: 0.3; cursor: not-allowed; }
+}
+
+.hero__switcher-track {
+  display: flex;
+  gap: 8px;
   overflow-x: auto;
-  padding-bottom: 4px;
   scrollbar-width: none;
+  flex: 1;
 
   &::-webkit-scrollbar { display: none; }
 }
 
-.discovery-carousel__item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
+.hero__switcher-item {
+  width: 48px;
+  height: 48px;
   flex-shrink: 0;
-  border: 0;
-  background: transparent;
-  cursor: pointer;
-  padding: 4px;
-  border-radius: var(--vt-radius-md);
-  transition: opacity 0.15s;
-
-  &:hover { opacity: 0.85; }
-
-  span {
-    font-size: 12px;
-    font-weight: 500;
-    color: var(--vt-text-soft);
-    white-space: nowrap;
-    max-width: 72px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    transition: color 0.15s;
-  }
-
-  &.is-active {
-    span { color: var(--vt-brand); font-weight: 600; }
-
-    .discovery-carousel__thumb {
-      border-color: var(--vt-brand);
-      box-shadow: 0 0 0 3px var(--vt-brand-soft);
-    }
-  }
-}
-
-.discovery-carousel__thumb {
-  width: 72px;
-  height: 72px;
-  border-radius: 16px;
+  border: 2px solid transparent;
+  border-radius: 12px;
   overflow: hidden;
-  border: 2px solid var(--vt-line);
+  cursor: pointer;
+  padding: 0;
+  background: var(--vt-surface-overlay);
   transition: border-color 0.15s, box-shadow 0.15s;
 
   img {
@@ -403,30 +417,36 @@ onMounted(async () => {
     object-position: top;
     display: block;
   }
+
+  &:hover { border-color: var(--vt-line); }
+
+  &.is-active {
+    border-color: var(--vt-brand);
+    box-shadow: 0 0 0 2px var(--vt-brand-soft);
+  }
 }
 
-/* ── Tabs ────────────────────────────────────────────────── */
-.discovery-tabs {
+/* ── 分类 Tabs ───────────────────────────────────────────── */
+.category-tabs {
   display: flex;
-  gap: 4px;
+  gap: 6px;
   overflow-x: auto;
   scrollbar-width: none;
-  padding-bottom: 2px;
 
   &::-webkit-scrollbar { display: none; }
 }
 
-.discovery-tabs__item {
+.category-tabs__item {
   flex-shrink: 0;
-  padding: 8px 18px;
-  border: 0;
+  padding: 7px 16px;
+  border: 1px solid var(--vt-line);
   border-radius: 999px;
-  background: transparent;
+  background: var(--vt-surface);
   color: var(--vt-text-soft);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  transition: background 0.12s, color 0.12s;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
 
   &:hover {
     background: var(--vt-surface-overlay);
@@ -435,36 +455,37 @@ onMounted(async () => {
 
   &.is-active {
     background: var(--vt-brand);
+    border-color: var(--vt-brand);
     color: white;
   }
 }
 
-/* ── Card Grid ───────────────────────────────────────────── */
-.discovery-grid {
+/* ── 内容卡片网格 ────────────────────────────────────────── */
+.content-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
   gap: 16px;
 }
 
-.discovery-card {
+.content-card {
   display: flex;
   flex-direction: column;
   gap: 8px;
   cursor: pointer;
 
-  &:hover .discovery-card__media {
+  &:hover .content-card__media {
     transform: translateY(-3px);
     box-shadow: var(--vt-shadow-md);
   }
 }
 
-.discovery-card__media {
+.content-card__media {
   position: relative;
   aspect-ratio: 2 / 3;
   border-radius: 16px;
   overflow: hidden;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
   background: var(--vt-surface-overlay);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 
   img {
     width: 100%;
@@ -475,18 +496,14 @@ onMounted(async () => {
   }
 }
 
-.discovery-card__overlay {
+.content-card__gradient {
   position: absolute;
   inset: 0;
-  background: linear-gradient(
-    to top,
-    oklch(0% 0 0 / 0.75) 0%,
-    oklch(0% 0 0 / 0.2) 45%,
-    transparent 70%
-  );
+  background: linear-gradient(to top, oklch(0% 0 0 / 0.72) 0%, oklch(0% 0 0 / 0.15) 45%, transparent 70%);
+  pointer-events: none;
 }
 
-.discovery-card__info {
+.content-card__label {
   position: absolute;
   bottom: 0;
   left: 0;
@@ -511,7 +528,7 @@ onMounted(async () => {
   }
 }
 
-.discovery-card__desc {
+.content-card__desc {
   margin: 0;
   font-size: 12px;
   color: var(--vt-text-muted);
@@ -522,8 +539,8 @@ onMounted(async () => {
   overflow: hidden;
 }
 
-/* ── Load More ───────────────────────────────────────────── */
-.discovery-more {
+/* ── 加载更多 ────────────────────────────────────────────── */
+.discovery__more {
   display: flex;
   justify-content: center;
 
@@ -535,66 +552,35 @@ onMounted(async () => {
     color: var(--vt-text-soft);
     font-size: 14px;
     cursor: pointer;
-    transition: background 0.12s, color 0.12s;
+    transition: background 0.12s;
 
-    &:hover { background: var(--vt-surface-overlay); color: var(--vt-text); }
+    &:hover { background: var(--vt-surface-overlay); }
     &:disabled { opacity: 0.5; cursor: not-allowed; }
   }
 }
 
-/* ── Dark mode enhancements ──────────────────────────────── */
-[data-theme="dark"] {
-  .discovery-page { background: #0b1020; }
+/* ── 响应式 ──────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .discovery { padding: 20px 16px 40px; gap: 20px; }
 
-  .discovery-hero {
-    background: #111827;
-    border-color: oklch(28% 0.01 240);
-  }
-
-  .discovery-hero__image-overlay {
-    background: linear-gradient(
-      to right,
-      #111827 0%,
-      color-mix(in srgb, #111827 75%, transparent) 50%,
-      transparent 100%
-    );
-  }
-}
-
-/* ── Responsive ──────────────────────────────────────────── */
-@media (max-width: 900px) {
-  .discovery-hero {
+  .hero__main {
     grid-template-columns: 1fr;
     min-height: auto;
   }
 
-  .discovery-hero__image {
-    position: relative;
-    width: 100%;
-    height: 260px;
-    left: 0;
-    right: 0;
+  .hero__visual {
+    height: 220px;
     order: -1;
   }
 
-  .discovery-hero__image-overlay {
-    background: linear-gradient(
-      to top,
-      var(--vt-surface) 0%,
-      transparent 60%
-    );
+  .hero__visual-fade {
+    background: linear-gradient(to top, var(--vt-surface) 0%, transparent 60%);
   }
 
-  .discovery-hero__copy {
-    padding: 24px;
-    max-width: 100%;
-  }
-}
+  .hero__copy { padding: 24px; }
+  .hero__name { font-size: 24px; }
 
-@media (max-width: 640px) {
-  .discovery-page { padding: 16px 16px 32px; gap: 20px; }
-
-  .discovery-grid {
+  .content-grid {
     grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
     gap: 10px;
   }
