@@ -65,12 +65,13 @@ const handleExplore = () => {
 .app-layout__view {
   flex: 1;
   min-height: 0;
-  overflow: hidden;
+  overflow-y: auto;  /* 非 chat 页面可滚动 */
 }
 
 .app-layout__view.is-chat-view {
   min-height: 0;
   height: 100%;
+  overflow: hidden;  /* chat 页面自己管理滚动 */
 }
 
 .app-layout.is-chat-route .app-layout__main {
