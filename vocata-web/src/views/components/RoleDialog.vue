@@ -13,7 +13,8 @@
       <div class="top">
         <div class="left">
           <div class="avatar">
-            <img :src="item.avatarUrl" alt="" />
+            <img :src="item.avatarUrl" alt=""
+              @error="onAvatarError($event, item.name || '?')" />
           </div>
           <div class="name">{{ item.name }}</div>
         </div>
@@ -47,6 +48,7 @@ import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { chatHistoryStore } from '@/store'
 import { ElMessage } from 'element-plus'
+import { onAvatarError } from '@/utils/avatar'
 
 const { item } = defineProps<{
   item: roleInfo

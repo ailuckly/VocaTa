@@ -39,7 +39,9 @@
           @click="openConversation(item.conversationUuid)"
         >
           <div class="app-sidebar__history-avatar">
-            <img v-if="item.characterAvatarUrl" :src="item.characterAvatarUrl" :alt="item.characterName || ''" />
+            <img v-if="item.characterAvatarUrl" :src="item.characterAvatarUrl"
+              :alt="item.characterName || ''"
+              @error="onAvatarError($event, item.characterName || item.title || '?')" />
             <span v-else>{{ (item.characterName || '?').slice(0, 1) }}</span>
           </div>
           <div class="app-sidebar__history-body">
@@ -55,7 +57,8 @@
     <div class="app-sidebar__footer">
       <button class="app-sidebar__user" @click="userMenuOpen = !userMenuOpen" :class="{ 'is-open': userMenuOpen }">
         <div class="app-sidebar__user-avatar">
-          <img v-if="userInfo.avatar" :src="userInfo.avatar" :alt="userInfo.nickname" />
+          <img v-if="userInfo.avatar" :src="userInfo.avatar" :alt="userInfo.nickname"
+            @error="onAvatarError($event, userInfo.nickname)" />
           <span v-else>{{ userInfo.nickname.slice(0, 1) }}</span>
         </div>
         <span class="app-sidebar__user-name">{{ userInfo.nickname }}</span>
@@ -95,6 +98,7 @@ import { chatHistoryStore } from '@/store'
 import { isMobile } from '@/utils/isMobile'
 import { useTheme } from '@/composables/useTheme'
 import { removeToken } from '@/utils/token'
+import { onAvatarError } from '@/utils/avatar'
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 

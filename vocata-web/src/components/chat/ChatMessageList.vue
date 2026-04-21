@@ -7,7 +7,8 @@
       :class="item.type === 'send' ? 'is-user' : 'is-ai'"
     >
       <div v-if="item.type === 'receive'" class="chat-message-list__avatar">
-        <img v-if="characterAvatar" :src="characterAvatar" :alt="characterName" />
+        <img v-if="characterAvatar" :src="characterAvatar" :alt="characterName"
+        @error="onAvatarError($event, characterName)" />
         <span v-else>{{ characterInitial }}</span>
       </div>
       <div class="chat-message-list__bubble" :class="{ 'is-streaming': (item as any).isStreaming }">
@@ -19,7 +20,8 @@
 
     <div v-if="thinking" class="chat-message-list__item is-ai">
       <div class="chat-message-list__avatar">
-        <img v-if="characterAvatar" :src="characterAvatar" :alt="characterName" />
+        <img v-if="characterAvatar" :src="characterAvatar" :alt="characterName"
+        @error="onAvatarError($event, characterName)" />
         <span v-else>{{ characterInitial }}</span>
       </div>
       <div class="chat-message-list__thinking">
@@ -31,6 +33,7 @@
 
 <script setup lang="ts">
 import type { ChatMessage } from '@/types/common'
+import { onAvatarError } from '@/utils/avatar'
 
 defineProps<{
   messages: ChatMessage[]

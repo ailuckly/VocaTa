@@ -3,7 +3,8 @@
     <!-- 顶部用户信息 -->
     <div class="profile-page__hero">
       <div class="profile-page__avatar">
-        <img v-if="userInfo.avatar" :src="userInfo.avatar" :alt="userInfo.nickname" />
+        <img v-if="userInfo.avatar" :src="userInfo.avatar" :alt="userInfo.nickname"
+          @error="onAvatarError($event, userInfo.nickname)" />
         <span v-else>{{ userInfo.nickname.slice(0, 1) }}</span>
       </div>
       <div class="profile-page__info">
@@ -35,7 +36,8 @@
           class="profile-page__list-item"
         >
           <div class="profile-page__list-avatar">
-            <img v-if="item.avatar" :src="item.avatar" :alt="item.title" />
+            <img v-if="item.avatar" :src="item.avatar" :alt="item.title"
+            @error="onAvatarError($event, item.title)" />
             <span v-else>{{ item.title.slice(0, 1) }}</span>
           </div>
           <div class="profile-page__list-body">
@@ -57,7 +59,8 @@
           class="profile-page__list-item"
         >
           <div class="profile-page__list-avatar">
-            <img v-if="item.avatar" :src="item.avatar" :alt="item.title" />
+            <img v-if="item.avatar" :src="item.avatar" :alt="item.title"
+            @error="onAvatarError($event, item.title)" />
             <span v-else>{{ item.title.slice(0, 1) }}</span>
           </div>
           <div class="profile-page__list-body">
@@ -73,6 +76,7 @@
 <script setup lang="ts">
 import { userApi } from '@/api/modules/user'
 import { chatHistoryStore } from '@/store'
+import { onAvatarError } from '@/utils/avatar'
 import { computed, onMounted, ref } from 'vue'
 
 const historyStore = chatHistoryStore()

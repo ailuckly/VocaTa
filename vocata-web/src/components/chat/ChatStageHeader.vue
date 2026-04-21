@@ -2,7 +2,8 @@
   <header class="chat-stage-header" data-test="chat-stage-header">
     <div class="chat-stage-header__identity">
       <div class="chat-stage-header__avatar">
-        <img v-if="avatar" :src="avatar" :alt="characterName" />
+        <img v-if="avatar" :src="avatar" :alt="characterName"
+        @error="onAvatarError($event, characterName)" />
         <span v-else>{{ initials }}</span>
       </div>
       <div class="chat-stage-header__copy">
@@ -19,6 +20,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { onAvatarError } from '@/utils/avatar'
 
 const props = defineProps<{
   avatar: string

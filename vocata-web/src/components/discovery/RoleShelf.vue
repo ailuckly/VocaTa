@@ -2,7 +2,8 @@
   <section class="role-shelf" data-test="role-shelf">
     <article v-for="role in roles" :key="role.id" class="role-shelf__card" data-test="role-card">
       <div class="role-shelf__media">
-        <img v-if="role.avatarUrl" :src="role.avatarUrl" :alt="role.name || '角色头像'" />
+        <img v-if="role.avatarUrl" :src="role.avatarUrl" :alt="role.name || '角色头像'"
+          @error="onAvatarError($event, role.name || '?')" />
       </div>
       <div class="role-shelf__body">
         <strong data-test="role-card-front">{{ role.name || '未命名角色' }}</strong>
@@ -19,6 +20,7 @@
 
 <script setup lang="ts">
 import type { roleInfo } from '@/types/common'
+import { onAvatarError } from '@/utils/avatar'
 
 defineProps<{
   roles: roleInfo[]
