@@ -17,10 +17,11 @@ defineProps<{
 .profile-card {
   display: grid;
   gap: 10px;
-  padding: 24px;
-  border-radius: var(--vt-radius-xl);
+  padding: 28px;
+  border-radius: var(--vt-radius-lg);
   background: var(--vt-surface);
-  box-shadow: var(--vt-shadow);
+  border: 1px solid var(--vt-line);
+  box-shadow: var(--vt-shadow-sm);
 }
 
 .profile-card p,
@@ -33,18 +34,20 @@ defineProps<{
   font-size: 12px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+  color: var(--vt-text-muted);
 }
 
 .profile-card h2 {
   margin: 0;
-  font-size: 32px;
-  line-height: 1.1;
+  font-size: 28px;
+  line-height: 1.15;
   font-weight: 700;
+  color: var(--vt-text);
 }
 
 .profile-card span {
-  max-width: 30ch;
-  font-size: 15px;
+  max-width: 36ch;
+  font-size: 14px;
   line-height: 1.6;
 }
 </style>

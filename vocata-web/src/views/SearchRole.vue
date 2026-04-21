@@ -166,23 +166,24 @@ const handlePageChange = (page: number) => {
 <style lang="scss" scoped>
 .discovery-page {
   display: grid;
-  gap: 24px;
+  gap: 28px;
   width: 100%;
-  max-width: 1320px;
+  max-width: 1280px;
   margin: 0 auto;
-  padding: 24px;
+  padding: 28px 24px;
+  background: var(--vt-bg);
 }
 
 .pagination-container {
   display: flex;
   justify-content: center;
-  padding-bottom: 8px;
+  padding-bottom: 12px;
 }
 
 @media (max-width: 768px) {
   .discovery-page {
     padding: 16px;
-    gap: 18px;
+    gap: 20px;
   }
 }
 </style>

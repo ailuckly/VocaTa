@@ -19,9 +19,10 @@ defineProps<{
   display: grid;
   gap: 12px;
   padding: 24px;
-  border-radius: var(--vt-radius-xl);
+  border-radius: var(--vt-radius-lg);
   background: var(--vt-surface);
-  box-shadow: var(--vt-shadow);
+  border: 1px solid var(--vt-line);
+  box-shadow: var(--vt-shadow-sm);
 }
 
 .profile-list h3,
@@ -40,7 +41,7 @@ defineProps<{
   gap: 4px;
   padding: 14px 16px;
   border-radius: 16px;
-  background: color-mix(in srgb, var(--vt-surface) 80%, var(--vt-brand) 8%);
+  background: var(--vt-surface-overlay);
 }
 
 .profile-list__item strong {
