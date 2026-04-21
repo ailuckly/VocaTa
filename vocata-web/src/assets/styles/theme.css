@@ -1,25 +1,82 @@
 :root {
   color-scheme: light;
-  --vt-bg: oklch(98% 0.01 190);
+
+  /* Backgrounds */
+  --vt-bg: oklch(98% 0.005 240);
   --vt-surface: oklch(100% 0 0);
-  --vt-surface-muted: oklch(97% 0.01 190);
-  --vt-line: oklch(90% 0.02 190);
-  --vt-text: oklch(28% 0.03 210);
-  --vt-text-soft: oklch(48% 0.03 210);
-  --vt-brand: oklch(74% 0.09 183);
-  --vt-brand-strong: oklch(64% 0.11 183);
-  --vt-accent: oklch(74% 0.14 32);
-  --vt-radius-xl: 28px;
-  --vt-radius-lg: 20px;
-  --vt-shadow: 0 24px 60px color-mix(in srgb, var(--vt-brand) 12%, transparent);
+  --vt-surface-raised: oklch(99% 0.005 240);
+  --vt-surface-overlay: oklch(96% 0.008 240);
+
+  /* Borders */
+  --vt-line: oklch(91% 0.01 240);
+  --vt-line-subtle: oklch(95% 0.008 240);
+
+  /* Text */
+  --vt-text: oklch(15% 0.02 240);
+  --vt-text-soft: oklch(45% 0.02 240);
+  --vt-text-muted: oklch(65% 0.015 240);
+
+  /* Brand (紫蓝，类 GPT) */
+  --vt-brand: oklch(55% 0.18 270);
+  --vt-brand-soft: oklch(92% 0.05 270);
+  --vt-brand-strong: oklch(45% 0.20 270);
+
+  /* Accent & Semantic */
+  --vt-accent: oklch(68% 0.16 32);
+  --vt-danger: oklch(60% 0.20 25);
+  --vt-success: oklch(60% 0.16 145);
+
+  /* Radius */
+  --vt-radius-sm: 8px;
+  --vt-radius-md: 12px;
+  --vt-radius-lg: 16px;
+  --vt-radius-xl: 24px;
+
+  /* Shadows */
+  --vt-shadow-sm: 0 1px 3px oklch(0% 0 0 / 0.08);
+  --vt-shadow-md: 0 4px 16px oklch(0% 0 0 / 0.10);
+  --vt-shadow-lg: 0 12px 40px oklch(0% 0 0 / 0.12);
+
+  /* Legacy aliases (backward compat) */
+  --vt-surface-muted: var(--vt-surface-overlay);
+  --vt-brand-strong-legacy: var(--vt-brand-strong);
+  --vt-shadow: var(--vt-shadow-lg);
+  --vt-radius: var(--vt-radius-xl);
+
+  /* Typography */
   --vt-font-body:
     'PingFang SC',
     'Hiragino Sans GB',
     'Microsoft YaHei',
     'Noto Sans CJK SC',
     sans-serif;
+
   font-synthesis: none;
   text-rendering: optimizeLegibility;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --vt-bg: oklch(12% 0.01 240);
+  --vt-surface: oklch(16% 0.01 240);
+  --vt-surface-raised: oklch(20% 0.01 240);
+  --vt-surface-overlay: oklch(22% 0.015 240);
+
+  --vt-line: oklch(28% 0.01 240);
+  --vt-line-subtle: oklch(24% 0.01 240);
+
+  --vt-text: oklch(95% 0.005 240);
+  --vt-text-soft: oklch(70% 0.01 240);
+  --vt-text-muted: oklch(50% 0.01 240);
+
+  --vt-brand: oklch(65% 0.18 270);
+  --vt-brand-soft: oklch(25% 0.08 270);
+  --vt-brand-strong: oklch(75% 0.20 270);
+
+  --vt-shadow-sm: 0 1px 3px oklch(0% 0 0 / 0.3);
+  --vt-shadow-md: 0 4px 16px oklch(0% 0 0 / 0.4);
+  --vt-shadow-lg: 0 12px 40px oklch(0% 0 0 / 0.5);
 }
 
 * {

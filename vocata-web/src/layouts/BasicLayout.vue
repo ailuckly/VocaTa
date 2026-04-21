@@ -45,10 +45,10 @@ const handleExplore = () => {
 <style lang="scss" scoped>
 .app-layout {
   display: grid;
-  grid-template-columns: 288px minmax(0, 1fr);
+  grid-template-columns: 260px minmax(0, 1fr);
   height: 100vh;
   overflow: hidden;
-  background: linear-gradient(180deg, var(--vt-bg), color-mix(in srgb, var(--vt-bg) 85%, white));
+  background: var(--vt-bg);
 }
 
 .app-layout__main {
@@ -59,7 +59,7 @@ const handleExplore = () => {
   height: 100vh;
   padding: 24px 28px;
   overflow: hidden;
-  background: color-mix(in srgb, var(--vt-surface) 94%, var(--vt-brand) 4%);
+  background: var(--vt-bg);
 }
 
 .app-layout__view {
