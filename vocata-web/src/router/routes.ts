@@ -24,9 +24,12 @@ const routes: RouteRecordRaw[] = [
       {
         path: '/profile',
         component: () => import('@/views/ProfilePage.vue'),
-        meta: {
-          title: '我的空间',
-        },
+        meta: { title: '个人资料' },
+      },
+      {
+        path: '/settings',
+        component: () => import('@/views/SettingsPage.vue'),
+        meta: { title: '设置' },
       },
       {
         path: '/chat/:conversationUuid',

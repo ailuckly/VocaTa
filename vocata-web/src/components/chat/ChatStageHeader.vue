@@ -2,15 +2,17 @@
   <header class="chat-stage-header" data-test="chat-stage-header">
     <div class="chat-stage-header__identity">
       <div class="chat-stage-header__avatar">
-        <img v-if="avatar" :src="avatar" :alt="characterName" />
+        <img v-if="avatar" :src="avatar" :alt="characterName"
+        @error="onAvatarError($event, characterName)" />
         <span v-else>{{ initials }}</span>
       </div>
       <div class="chat-stage-header__copy">
-        <p>{{ eyebrow }}</p>
+        <p v-if="eyebrow">{{ eyebrow }}</p>
         <h1>{{ characterName }}</h1>
       </div>
     </div>
     <div class="chat-stage-header__status" :class="{ 'is-connected': connected }">
+      <span class="chat-stage-header__dot"></span>
       {{ status }}
     </div>
   </header>
@@ -18,6 +20,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { onAvatarError } from '@/utils/avatar'
 
 const props = defineProps<{
   avatar: string
@@ -36,30 +39,33 @@ const initials = computed(() => props.characterName.slice(0, 2).toUpperCase())
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 4px 0 8px;
-  border-bottom: 1px solid color-mix(in srgb, var(--vt-line) 72%, white);
+  padding: 12px 0;
+  border-bottom: 1px solid var(--vt-line);
   max-width: 760px;
   margin: 0 auto;
+  width: 100%;
 }
 
 .chat-stage-header__identity {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   min-width: 0;
 }
 
 .chat-stage-header__avatar {
   display: grid;
-  width: 40px;
-  height: 40px;
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
   place-items: center;
   border-radius: 50%;
   overflow: hidden;
-  background: color-mix(in srgb, var(--vt-brand) 18%, white);
+  background: var(--vt-brand-soft);
   color: var(--vt-brand-strong);
   font-size: 13px;
   font-weight: 700;
+  border: 1.5px solid var(--vt-line);
 }
 
 .chat-stage-header__avatar img {
@@ -78,29 +84,49 @@ const initials = computed(() => props.characterName.slice(0, 2).toUpperCase())
 }
 
 .chat-stage-header__copy p {
-  color: var(--vt-text-soft);
+  color: var(--vt-text-muted);
   font-size: 11px;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
 }
 
 .chat-stage-header__copy h1 {
   font-size: 15px;
-  line-height: 1.2;
-  font-weight: 700;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--vt-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .chat-stage-header__status {
-  padding: 6px 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--vt-surface) 88%, var(--vt-brand) 8%);
-  color: var(--vt-text-soft);
-  font-size: 11px;
+  background: var(--vt-surface-overlay);
+  color: var(--vt-text-muted);
+  font-size: 12px;
   white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.chat-stage-header__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--vt-text-muted);
+  flex-shrink: 0;
 }
 
 .chat-stage-header__status.is-connected {
-  background: color-mix(in srgb, var(--vt-brand) 14%, white);
+  background: var(--vt-brand-soft);
   color: var(--vt-brand-strong);
+
+  .chat-stage-header__dot {
+    background: var(--vt-brand);
+  }
 }
 </style>

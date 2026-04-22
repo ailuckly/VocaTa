@@ -1,92 +1,88 @@
 <template>
-  <div :class="['login-page', layoutClass]">
-    <div class="login-box">
-      <div class="left">
-        <div class="brand-copy">
-          <p class="brand-copy__eyebrow">Bright companion space</p>
-          <h1>把每一次对话留在更舒服的空间里</h1>
-          <span>登录后继续你最近的聊天，或者创建一个新的陪伴角色。</span>
+  <div class="login-page" :class="isMobileDevice ? 'is-mobile' : 'is-desktop'">
+    <!-- 左侧品牌区（桌面端） -->
+    <div v-if="!isMobileDevice" class="login-page__brand">
+      <div class="login-page__brand-inner">
+        <div class="login-page__logo">
+          <img src="@/assets/logo.svg" alt="VocaTa" class="login-page__logo-icon" />
+          <span class="login-page__logo-text">VocaTa</span>
         </div>
-
-        <div class="title">
-          <img src="@/assets/images/logo-text.png" alt="语Ta Logo" />
-        </div>
-
-        <div class="main">
-          <!-- 标签导航 -->
-          <nav class="tab-nav">
-            <div
-              v-for="tab in tabs"
-              :key="tab.value"
-              :class="{ active: activeTab === tab.value }"
-              @click="activeTab = tab.value"
-            >
-              {{ tab.label }}
-            </div>
-          </nav>
-
-          <!-- 表单区域 -->
-          <el-form class="form">
-            <!-- 登录表单 -->
-            <template v-if="isLoginTab">
-              <el-input v-model="loginForm.loginName" placeholder="请输入用户名" size="large" />
-              <el-input
-                v-model="loginForm.password"
-                type="password"
-                show-password
-                placeholder="请输入密码"
-                size="large"
-              />
-              <el-checkbox v-model="loginForm.rememberMe" label="记住我" />
-              <div
-                class="confirm-btn"
-                @click="handleLogin"
-                v-loading.fullscreen.lock="fullscreenLoading"
-                element-loading-text="请稍后..."
-              >
-                登录
-              </div>
-            </template>
-
-            <!-- 注册表单 -->
-            <template v-if="isRegisterTab">
-              <el-input v-model="registerForm.nickname" placeholder="请输入用户名" size="large" />
-              <el-input v-model="registerForm.email" placeholder="请输入邮箱" size="large" />
-              <el-input
-                v-model="registerForm.password"
-                type="password"
-                placeholder="请输入密码"
-                size="large"
-              />
-              <el-input
-                v-model="registerForm.confirmPassword"
-                type="password"
-                placeholder="请确认密码"
-                size="large"
-              />
-              <el-input
-                v-model="registerForm.verificationCode"
-                placeholder="请输入验证码"
-                size="large"
-              >
-                <template #append>
-                  <el-button @click="handleSendCode" :disabled="isCodeButtonDisabled">
-                    {{ codeButtonText }}
-                  </el-button>
-                </template>
-              </el-input>
-              <el-checkbox
-                v-model="registerForm.hasRead"
-                label="我已阅读并同意用户协议和隐私政策"
-              />
-              <div class="confirm-btn" @click="handleRegister">注册</div>
-            </template>
-          </el-form>
-        </div>
+        <h1 class="login-page__headline">把每一次对话<br />留在更舒服的空间里</h1>
+        <p class="login-page__sub">登录后继续你最近的聊天，或者创建一个新的陪伴角色。</p>
       </div>
+    </div>
 
-      <!-- 右侧图片（仅PC端显示） -->
-      <div v-if="!isMobileDevice" class="right"></div>
+    <!-- 右侧表单区 -->
+    <div class="login-page__form-area">
+      <div class="login-page__card">
+        <!-- 移动端 Logo -->
+        <div v-if="isMobileDevice" class="login-page__logo login-page__logo--mobile">
+          <img src="@/assets/logo.svg" alt="VocaTa" class="login-page__logo-icon" />
+          <span class="login-page__logo-text">VocaTa</span>
+        </div>
+
+        <!-- Tab 切换 -->
+        <nav class="login-page__tabs">
+          <button
+            v-for="tab in tabs"
+            :key="tab.value"
+            class="login-page__tab"
+            :class="{ 'is-active': activeTab === tab.value }"
+            @click="activeTab = tab.value"
+          >
+            {{ tab.label }}
+          </button>
+        </nav>
+
+        <!-- 登录表单 -->
+        <el-form v-if="isLoginTab" class="login-page__form">
+          <el-form-item>
+            <el-input v-model="loginForm.loginName" placeholder="用户名" size="large" />
+          </el-form-item>
+          <el-form-item>
+            <el-input v-model="loginForm.password" type="password" show-password placeholder="密码" size="large" />
+          </el-form-item>
+          <el-form-item>
+            <el-checkbox v-model="loginForm.rememberMe" label="记住我" />
+          </el-form-item>
+          <button
+            type="button"
+            class="login-page__submit"
+            v-loading.fullscreen.lock="fullscreenLoading"
+            element-loading-text="请稍后..."
+            @click="handleLogin"
+          >
+            登录
+          </button>
+        </el-form>
+
+        <!-- 注册表单 -->
+        <el-form v-if="isRegisterTab" class="login-page__form">
+          <el-form-item>
+            <el-input v-model="registerForm.nickname" placeholder="用户名" size="large" />
+          </el-form-item>
+          <el-form-item>
+            <el-input v-model="registerForm.email" placeholder="邮箱" size="large" />
+          </el-form-item>
+          <el-form-item>
+            <el-input v-model="registerForm.password" type="password" placeholder="密码" size="large" />
+          </el-form-item>
+          <el-form-item>
+            <el-input v-model="registerForm.confirmPassword" type="password" placeholder="确认密码" size="large" />
+          </el-form-item>
+          <el-form-item>
+            <el-input v-model="registerForm.verificationCode" placeholder="验证码" size="large">
+              <template #append>
+                <el-button @click="handleSendCode" :disabled="isCodeButtonDisabled">{{ codeButtonText }}</el-button>
+              </template>
+            </el-input>
+          </el-form-item>
+          <el-form-item>
+            <el-checkbox v-model="registerForm.hasRead" label="我已阅读并同意用户协议和隐私政策" />
+          </el-form-item>
+          <button type="button" class="login-page__submit" @click="handleRegister">注册</button>
+        </el-form>
+      </div>
     </div>
   </div>
 </template>
@@ -298,164 +294,154 @@ const handleRegister = async (): Promise<void> => {
 
 <style lang="scss" scoped>
 .login-page {
-  width: 100%;
-  height: 100vh;
   display: flex;
-  justify-content: center;
-  align-items: center;
-  background-color: #f0f0f0;
-
-  &.mobile {
-    .login-box {
-      width: 95%;
-      height: 95%;
-      overflow: auto;
-    }
-
-    .left {
-      .title {
-        padding: 0.2rem 0 0;
-      }
-
-      .form {
-        padding: 0.1rem 0.5rem;
-      }
-
-      .tab-nav {
-        padding: 0 0.3rem;
-      }
-    }
-  }
+  min-height: 100vh;
+  background: var(--vt-bg);
 }
 
-.login-box {
-  width: 70%;
-  height: 70%;
-  background-color: #fff;
-  display: flex;
-  border-radius: 0.2rem;
-  overflow: hidden;
-  box-shadow: 0.01rem 0.01rem 0.05rem 0.03rem #ddd;
-}
-
-.left {
+/* Brand panel (desktop left) */
+.login-page__brand {
   flex: 1;
-  width: 50%;
-  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px;
+  background: linear-gradient(135deg, var(--vt-brand-soft) 0%, var(--vt-bg) 100%);
+  border-right: 1px solid var(--vt-line);
+}
+
+.login-page__brand-inner {
+  max-width: 360px;
   display: flex;
   flex-direction: column;
-
-  .title {
-    font-size: 0.4rem;
-    font-weight: bold;
-    text-align: center;
-    padding: 0.2rem 0 0;
-
-    img {
-      width: 1.2rem;
-      height: 0.55rem;
-      object-fit: contain;
-    }
-  }
-
-  .tab-nav {
-    display: flex;
-    justify-content: center;
-    padding: 0 0.5rem;
-
-    div {
-      width: 50%;
-      text-align: center;
-      padding: 0.1rem 0.2rem;
-      font-size: 0.2rem;
-      cursor: pointer;
-      border-bottom: 0.01rem solid #ccc;
-      transition: all 0.3s ease;
-
-      &:hover {
-        font-weight: bold;
-        background-color: #f5f5f5;
-      }
-
-      &.active {
-        border-bottom: 0.03rem solid #000;
-        font-weight: bold;
-        color: #000;
-      }
-    }
-  }
-
-  .form {
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    padding: 0.15rem 0.7rem;
-
-    :deep(.el-input__inner) {
-      font-size: 0.16rem;
-    }
-
-    .el-input {
-      margin-top: 0.3rem;
-    }
-
-    .el-checkbox {
-      margin: 0.2rem 0;
-    }
-
-    .confirm-btn {
-      width: 80%;
-      text-align: center;
-      margin: auto;
-      height: 0.45rem;
-      line-height: 0.45rem;
-      font-size: 0.16rem;
-      background-color: #000;
-      color: #fff;
-      border-radius: 0.1rem;
-      cursor: pointer;
-      transition: all 0.3s ease;
-
-      &:hover {
-        background-color: #333;
-        transform: translateY(-1px);
-      }
-
-      &:active {
-        transform: translateY(0);
-      }
-    }
-  }
+  gap: 24px;
 }
 
-.brand-copy {
-  display: grid;
-  gap: 0.1rem;
-  padding: 0.4rem 0.7rem 0;
+.login-page__logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
-.brand-copy__eyebrow,
-.brand-copy span {
+.login-page__logo--mobile {
+  justify-content: center;
+  margin-bottom: 8px;
+}
+
+.login-page__logo-icon {
+  width: 32px;
+  height: 32px;
+}
+
+.login-page__logo-text {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  background: linear-gradient(135deg, var(--vt-brand) 0%, oklch(65% 0.18 200) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.login-page__headline {
   margin: 0;
-  color: #6b7a7a;
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--vt-text);
+  letter-spacing: -0.5px;
 }
 
-.brand-copy__eyebrow {
-  font-size: 0.14rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-
-.brand-copy h1 {
+.login-page__sub {
   margin: 0;
-  max-width: 7ch;
-  font-size: 0.42rem;
-  line-height: 1.05;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--vt-text-soft);
 }
 
-.right {
+/* Form area */
+.login-page__form-area {
   flex: 1;
-  background: url('../assets/images/loginPic.png') no-repeat center center;
-  background-size: cover;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 32px;
+}
+
+.login-page__card {
+  width: 100%;
+  max-width: 380px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* Tabs */
+.login-page__tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--vt-line);
+}
+
+.login-page__tab {
+  flex: 1;
+  padding: 10px 0;
+  border: 0;
+  background: transparent;
+  color: var(--vt-text-muted);
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: color 0.15s, border-color 0.15s;
+
+  &:hover { color: var(--vt-text); }
+
+  &.is-active {
+    color: var(--vt-text);
+    border-bottom-color: var(--vt-brand);
+  }
+}
+
+/* Form */
+.login-page__form {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+
+  :deep(.el-form-item) { margin-bottom: 12px; }
+}
+
+.login-page__submit {
+  width: 100%;
+  height: 44px;
+  margin-top: 8px;
+  border: 0;
+  border-radius: var(--vt-radius-md);
+  background: var(--vt-brand);
+  color: white;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+
+  &:hover { background: var(--vt-brand-strong); }
+  &:active { transform: scale(0.99); }
+}
+
+/* Mobile */
+.login-page.is-mobile {
+  flex-direction: column;
+
+  .login-page__form-area {
+    padding: 32px 20px;
+    align-items: flex-start;
+    padding-top: 48px;
+  }
+
+  .login-page__card {
+    max-width: 100%;
+  }
 }
 </style>

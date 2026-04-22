@@ -1,32 +1,94 @@
 <template>
-  <aside class="app-sidebar" data-test="app-sidebar" :class="{ 'is-hidden': collapsed && isMobileDevice }">
-    <div class="app-sidebar__brand">
-      <RouterLink class="app-sidebar__brand-link" to="/searchRole" aria-label="语Ta">
-        <img class="app-sidebar__logo" src="@/assets/images/logo-text.png" alt="语Ta" />
+  <aside class="app-sidebar" :class="{ 'is-hidden': collapsed && isMobileDevice }">
+    <!-- 顶部：Logo + 新建按钮 -->
+    <div class="app-sidebar__top">
+      <RouterLink class="app-sidebar__logo" to="/searchRole" aria-label="VocaTa 首页">
+        <img src="@/assets/logo.svg" alt="" aria-hidden="true" class="app-sidebar__logo-icon" />
+        <span class="app-sidebar__logo-text">VocaTa</span>
       </RouterLink>
-      <button
-        v-if="isMobileDevice"
-        type="button"
-        class="app-sidebar__toggle"
-        @click="$emit('toggle')"
-      >
-        关闭
-      </button>
+      <RouterLink to="/newRole" class="app-sidebar__new-btn" title="创建角色">
+        <el-icon><Plus /></el-icon>
+      </RouterLink>
     </div>
 
-    <AppSidebarProfile :avatar="userInfo.avatar" :display-name="userInfo.nickname" />
-
-    <nav class="app-sidebar__nav" aria-label="主导航">
-      <RouterLink to="/searchRole">探索</RouterLink>
-      <RouterLink to="/newRole">创建角色</RouterLink>
-      <RouterLink to="/profile">我的空间</RouterLink>
+    <!-- 主导航 -->
+    <nav class="app-sidebar__nav">
+      <RouterLink to="/searchRole" class="app-sidebar__nav-item">
+        <el-icon><Compass /></el-icon>
+        <span>探索</span>
+      </RouterLink>
+      <RouterLink to="/newRole" class="app-sidebar__nav-item">
+        <el-icon><EditPen /></el-icon>
+        <span>创建角色</span>
+      </RouterLink>
     </nav>
 
-    <AppSidebarHistory
-      :items="chatHistory"
-      :active-conversation-uuid="activeConversationUuid"
-      @open="openConversation"
-    />
+    <div class="app-sidebar__divider"></div>
+
+    <!-- 对话历史 -->
+    <div class="app-sidebar__history-header">
+      <span>最近对话</span>
+    </div>
+    <div class="app-sidebar__history">
+      <template v-if="chatHistory.length">
+        <button
+          v-for="item in chatHistory"
+          :key="item.conversationUuid"
+          class="app-sidebar__history-item"
+          :class="{ 'is-active': item.conversationUuid === activeConversationUuid }"
+          @click="openConversation(item.conversationUuid)"
+        >
+          <div class="app-sidebar__history-avatar">
+            <img v-if="item.characterAvatarUrl" :src="item.characterAvatarUrl"
+              :alt="item.characterName || ''"
+              @error="onAvatarError($event, item.characterName || item.title || '?')" />
+            <span v-else>{{ (item.characterName || '?').slice(0, 1) }}</span>
+          </div>
+          <div class="app-sidebar__history-body">
+            <strong>{{ item.characterName || item.title || '未命名对话' }}</strong>
+            <span>{{ item.lastMessageSummary || item.greeting || '继续上一次对话' }}</span>
+          </div>
+        </button>
+      </template>
+      <p v-else class="app-sidebar__history-empty">还没有对话记录</p>
+    </div>
+
+    <!-- 底部：用户菜单 -->
+    <div class="app-sidebar__footer">
+      <button class="app-sidebar__user" @click="userMenuOpen = !userMenuOpen" :class="{ 'is-open': userMenuOpen }">
+        <div class="app-sidebar__user-avatar">
+          <img v-if="userInfo.avatar" :src="userInfo.avatar" :alt="userInfo.nickname"
+            @error="onAvatarError($event, userInfo.nickname)" />
+          <span v-else>{{ userInfo.nickname.slice(0, 1) }}</span>
+        </div>
+        <span class="app-sidebar__user-name">{{ userInfo.nickname }}</span>
+        <el-icon class="app-sidebar__user-chevron"><ArrowUp /></el-icon>
+      </button>
+
+      <!-- 弹出菜单 -->
+      <Transition name="user-menu">
+        <div v-if="userMenuOpen" class="app-sidebar__user-menu">
+          <RouterLink to="/profile" class="app-sidebar__user-menu-item" @click="userMenuOpen = false">
+            <el-icon><User /></el-icon>
+            <span>个人资料</span>
+          </RouterLink>
+          <RouterLink to="/settings" class="app-sidebar__user-menu-item" @click="userMenuOpen = false">
+            <el-icon><Setting /></el-icon>
+            <span>设置</span>
+          </RouterLink>
+          <div class="app-sidebar__user-menu-divider"></div>
+          <button class="app-sidebar__user-menu-item is-danger" @click="handleLogout">
+            <el-icon><SwitchButton /></el-icon>
+            <span>退出登录</span>
+          </button>
+        </div>
+      </Transition>
+    </div>
+
+    <!-- 移动端关闭按钮 -->
+    <button v-if="isMobileDevice" class="app-sidebar__close" @click="$emit('toggle')" aria-label="关闭菜单">
+      <el-icon><Close /></el-icon>
+    </button>
   </aside>
 </template>
 
@@ -34,146 +96,366 @@
 import { userApi } from '@/api/modules/user'
 import { chatHistoryStore } from '@/store'
 import { isMobile } from '@/utils/isMobile'
+import { useTheme } from '@/composables/useTheme'
+import { removeToken } from '@/utils/token'
+import { onAvatarError } from '@/utils/avatar'
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import AppSidebarHistory from './AppSidebarHistory.vue'
-import AppSidebarProfile from './AppSidebarProfile.vue'
 
-defineProps<{
-  collapsed: boolean
-}>()
-
-defineEmits<{
-  toggle: []
-}>()
+defineProps<{ collapsed: boolean }>()
+defineEmits<{ toggle: [] }>()
 
 const router = useRouter()
 const route = useRoute()
 const isMobileDevice = isMobile()
 const historyStore = chatHistoryStore()
+const { isDark } = useTheme()
 
-const userInfo = ref({
-  nickname: '语Ta 用户',
-  avatar: '',
-})
+const userInfo = ref({ nickname: '用户', avatar: '' })
+const userMenuOpen = ref(false)
+const chatHistory = computed(() => historyStore.chatHistory.slice(0, 12))
+const activeConversationUuid = computed(() =>
+  route.path.startsWith('/chat/') ? String(route.params.conversationUuid) : ''
+)
 
-const chatHistory = computed(() => historyStore.chatHistory.slice(0, 8))
-const activeConversationUuid = computed(() => {
-  if (route.path.startsWith('/chat/') && route.params.conversationUuid) {
-    return String(route.params.conversationUuid)
-  }
-  return ''
-})
+const openConversation = (uuid: string) => router.push(`/chat/${uuid}`)
 
-const openConversation = (conversationUuid: string) => {
-  router.push(`/chat/${conversationUuid}`)
+const handleLogout = async () => {
+  userMenuOpen.value = false
+  try { await userApi.logout() } catch {}
+  removeToken()
+  router.push('/login')
 }
 
-const loadSidebarData = async () => {
+onMounted(async () => {
   try {
-    const [userRes] = await Promise.all([
-      userApi.getUserInfo(),
-      historyStore.getChatHistory(),
-    ])
-
+    const [userRes] = await Promise.all([userApi.getUserInfo(), historyStore.getChatHistory()])
     if (userRes.code === 200 && userRes.data) {
-      userInfo.value = {
-        nickname: userRes.data.nickname || '语Ta 用户',
-        avatar: userRes.data.avatar || '',
-      }
+      userInfo.value = { nickname: userRes.data.nickname || '用户', avatar: userRes.data.avatar || '' }
     }
-  } catch (error) {
-    console.error('加载侧边栏数据失败:', error)
-  }
-}
-
-onMounted(() => {
-  loadSidebarData()
+  } catch {}
 })
 </script>
 
 <style scoped lang="scss">
 .app-sidebar {
-  display: grid;
-  align-content: start;
-  gap: 16px;
-  width: 288px;
-  min-width: 288px;
-  max-width: 288px;
-  flex: none;
+  display: flex;
+  flex-direction: column;
+  width: 280px;
+  min-width: 280px;
   height: 100vh;
-  padding: 24px 20px;
-  background: color-mix(in srgb, var(--vt-bg) 82%, white);
+  background: var(--vt-surface);
   border-right: 1px solid var(--vt-line);
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: hidden;
 }
 
-.app-sidebar__brand {
+/* Top */
+.app-sidebar__top {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-}
-
-.app-sidebar__brand-link {
-  display: flex;
-  align-items: center;
-  min-width: 0;
+  padding: 16px 16px 8px;
+  flex-shrink: 0;
 }
 
 .app-sidebar__logo {
-  display: block;
-  width: 128px;
-  height: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
 }
 
-.app-sidebar__toggle {
+.app-sidebar__logo-icon {
+  width: 26px;
+  height: 26px;
+}
+
+.app-sidebar__logo-text {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  background: linear-gradient(135deg, var(--vt-brand) 0%, oklch(65% 0.18 200) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.app-sidebar__new-btn {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--vt-radius-sm);
+  background: var(--vt-brand-soft);
+  color: var(--vt-brand-strong);
+  font-size: 16px;
+  text-decoration: none;
+  transition: background 0.15s;
+
+  &:hover { background: var(--vt-line); }
+}
+
+/* Nav */
+.app-sidebar__nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 8px;
+  flex-shrink: 0;
+}
+
+.app-sidebar__nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--vt-radius-sm);
+  color: var(--vt-text-soft);
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: background 0.12s, color 0.12s;
+
+  .el-icon { font-size: 16px; flex-shrink: 0; }
+
+  &:hover { background: var(--vt-surface-overlay); color: var(--vt-text); }
+  &.router-link-active { background: var(--vt-brand-soft); color: var(--vt-brand-strong); }
+}
+
+/* Divider */
+.app-sidebar__divider {
+  height: 1px;
+  background: var(--vt-line-subtle);
+  margin: 4px 16px;
+  flex-shrink: 0;
+}
+
+/* History */
+.app-sidebar__history-header {
+  padding: 8px 18px 4px;
+  flex-shrink: 0;
+
+  span {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--vt-text-muted);
+  }
+}
+
+.app-sidebar__history {
+  flex: 1;
+  overflow-y: auto;
+  padding: 2px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+
+  &::-webkit-scrollbar { width: 4px; }
+  &::-webkit-scrollbar-thumb { background: var(--vt-line); border-radius: 2px; }
+}
+
+.app-sidebar__history-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 10px;
   border: 0;
-  border-radius: 999px;
-  padding: 8px 12px;
+  border-radius: var(--vt-radius-sm);
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s;
+  min-width: 0;
+
+  &:hover { background: var(--vt-surface-overlay); }
+
+  &.is-active {
+    background: var(--vt-brand-soft);
+
+    strong { color: var(--vt-brand-strong); }
+  }
+}
+
+.app-sidebar__history-avatar {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  place-items: center;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--vt-surface-overlay);
+  color: var(--vt-text-soft);
+  font-size: 12px;
+  font-weight: 700;
+
+  img { width: 100%; height: 100%; object-fit: cover; }
+}
+
+.app-sidebar__history-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+
+  strong, span {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  strong { font-size: 13px; font-weight: 500; color: var(--vt-text); }
+  span { font-size: 11px; color: var(--vt-text-muted); }
+}
+
+.app-sidebar__history-empty {
+  margin: 0;
+  padding: 12px 10px;
+  font-size: 12px;
+  color: var(--vt-text-muted);
+}
+
+/* Footer */
+.app-sidebar__footer {
+  position: relative;
+  padding: 10px 8px;
+  border-top: 1px solid var(--vt-line-subtle);
+  flex-shrink: 0;
+}
+
+.app-sidebar__user {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: var(--vt-radius-sm);
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s;
+
+  &:hover, &.is-open { background: var(--vt-surface-overlay); }
+}
+
+.app-sidebar__user-avatar {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  place-items: center;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--vt-brand-soft);
+  color: var(--vt-brand-strong);
+  font-size: 12px;
+  font-weight: 700;
+
+  img { width: 100%; height: 100%; object-fit: cover; }
+}
+
+.app-sidebar__user-name {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--vt-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-sidebar__user-chevron {
+  font-size: 12px;
+  color: var(--vt-text-muted);
+  flex-shrink: 0;
+  transition: transform 0.2s;
+
+  .is-open & { transform: rotate(180deg); }
+}
+
+/* User popup menu */
+.app-sidebar__user-menu {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 8px;
+  right: 8px;
   background: var(--vt-surface);
+  border: 1px solid var(--vt-line);
+  border-radius: var(--vt-radius-md);
+  box-shadow: var(--vt-shadow-md);
+  overflow: hidden;
+  z-index: 50;
+}
+
+.user-menu-enter-active, .user-menu-leave-active {
+  transition: opacity 0.15s, transform 0.15s;
+}
+.user-menu-enter-from, .user-menu-leave-to {
+  opacity: 0;
+  transform: translateY(6px);
+}
+
+.app-sidebar__user-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 14px;
+  border: 0;
+  background: transparent;
+  color: var(--vt-text);
+  font-size: 14px;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.12s;
+
+  .el-icon { font-size: 15px; color: var(--vt-text-soft); }
+
+  &:hover { background: var(--vt-surface-overlay); }
+  &.is-danger { color: var(--vt-danger); .el-icon { color: var(--vt-danger); } }
+}
+
+.app-sidebar__user-menu-divider {
+  height: 1px;
+  background: var(--vt-line-subtle);
+  margin: 2px 0;
+}
+
+/* Mobile close */
+.app-sidebar__close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: var(--vt-radius-sm);
+  background: var(--vt-surface-overlay);
   color: var(--vt-text-soft);
   cursor: pointer;
 }
 
-.app-sidebar__nav {
-  display: grid;
-  gap: 6px;
-  padding: 8px;
-  border-radius: 20px;
-  background: color-mix(in srgb, var(--vt-surface) 76%, var(--vt-brand) 8%);
-}
-
-.app-sidebar__nav a {
-  display: block;
-  padding: 10px 12px;
-  border-radius: 14px;
-  color: var(--vt-text-soft);
-  font-size: 14px;
-  line-height: 1.3;
-  font-weight: 500;
-}
-
-.app-sidebar__nav a.router-link-active {
-  background: var(--vt-surface);
-  color: var(--vt-text);
-  box-shadow: var(--vt-shadow);
-}
-
+/* Mobile */
 @media (max-width: 768px) {
   .app-sidebar {
     position: fixed;
     inset: 0 auto 0 0;
-    z-index: 30;
-    width: min(84vw, 320px);
-    min-width: min(84vw, 320px);
-    max-width: min(84vw, 320px);
-    box-shadow: 24px 0 48px rgba(19, 43, 42, 0.18);
+    z-index: 40;
+    width: min(82vw, 280px);
+    min-width: unset;
+    box-shadow: var(--vt-shadow-lg);
+    transition: transform 0.25s ease;
   }
 
   .app-sidebar.is-hidden {
-    display: none;
+    transform: translateX(-100%);
   }
 }
 </style>

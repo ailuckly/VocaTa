@@ -10,7 +10,12 @@ import '@/assets/styles/fonts.css'
 import '@/assets/styles/theme.css'
 import '@/assets/styles/element-overrides.scss'
 import '@/assets/styles/pagination-theme.css'
+import { useTheme } from '@/composables/useTheme'
 import { zhCn } from 'element-plus/es/locales.mjs'
+
+// 初始化主题（在 app 挂载前，避免闪烁）
+useTheme().init()
+
 const app = createApp(App)
 
 app.use(createPinia())
