@@ -2,12 +2,19 @@
   <div class="discovery">
     <!-- ── 页面标题 ──────────────────────────────────────── -->
     <div class="discovery__header">
-      <h1 class="discovery__title">探索角色</h1>
-      <p class="discovery__subtitle">找到今天适合开口的陪伴对象，立刻进入对话</p>
+      <h1 class="discovery__title">✨ 欢迎来到 VocaTa</h1>
     </div>
 
     <!-- ── Hero Banner（含角色切换） ─────────────────────── -->
     <section class="hero" v-if="heroRole">
+      <!-- 模糊背景 -->
+      <div class="hero__bg-wrap">
+        <Transition name="hero-bg-anim">
+          <img :key="heroRole.id" :src="heroRole.avatarUrl" aria-hidden="true" />
+        </Transition>
+        <div class="hero__bg-overlay"></div>
+      </div>
+
       <div class="hero__main">
         <!-- 左：文案 -->
         <div class="hero__copy">
@@ -18,63 +25,76 @@
             <button class="hero__cta" @click="startConversation(heroRole.id)">立即体验</button>
             <span class="hero__meta" v-if="heroRole.chatCount">{{ heroRole.chatCount.toLocaleString() }} 次对话</span>
           </div>
-        </div>
-        <!-- 右：角色图 -->
-        <div class="hero__visual">
-          <Transition name="hero-img">
-            <img
-              :key="heroRole.id"
-              :src="heroRole.avatarUrl"
-              :alt="heroRole.name || ''"
-              @error="onAvatarError($event, heroRole.name || '?')"
-            />
-          </Transition>
-          <div class="hero__visual-fade"></div>
-        </div>
-      </div>
 
-      <!-- 角色切换区（Banner 内部底部） -->
-      <div class="hero__switcher" v-if="featuredRoles.length > 1">
-        <button
-          class="hero__switcher-arrow"
-          @click="switchHero(-1)"
-          :disabled="heroIndex <= 0"
-          aria-label="上一个"
-        >‹</button>
-        <div class="hero__switcher-track">
-          <button
-            v-for="(role, i) in featuredRoles"
-            :key="role.id"
-            class="hero__switcher-item"
-            :class="{ 'is-active': heroIndex === i }"
-            @click="heroIndex = i"
-          >
-            <img
-              :src="role.avatarUrl"
-              :alt="role.name || ''"
-              @error="onAvatarError($event, role.name || '?')"
-            />
-          </button>
+          <!-- 角色切换区（左侧内联） -->
+          <div class="hero__switcher-inline" v-if="featuredRoles.length > 1">
+            <button
+              class="hero__switcher-arrow"
+              @click="switchHero(-1)"
+              aria-label="上一个"
+            >‹</button>
+            <div class="hero__switcher-track" ref="trackRef">
+              <button
+                v-for="(role, i) in featuredRoles"
+                :key="role.id"
+                class="hero__switcher-item"
+                :class="{ 'is-active': heroIndex === i }"
+                @click="selectHero(i)"
+              >
+                <img
+                  :src="role.avatarUrl"
+                  :alt="role.name || ''"
+                  @error="onAvatarError($event, role.name || '?')"
+                />
+              </button>
+            </div>
+            <button
+              class="hero__switcher-arrow"
+              @click="switchHero(1)"
+              aria-label="下一个"
+            >›</button>
+          </div>
         </div>
-        <button
-          class="hero__switcher-arrow"
-          @click="switchHero(1)"
-          :disabled="heroIndex >= featuredRoles.length - 1"
-          aria-label="下一个"
-        >›</button>
+
+        <!-- 右：角色图卡片 -->
+        <div class="hero__visual-card-wrap">
+          <div class="hero__visual-card">
+            <Transition :name="slideDirection">
+              <img
+                :key="heroRole.id"
+                :src="heroRole.avatarUrl"
+                :alt="heroRole.name || ''"
+                @error="onAvatarError($event, heroRole.name || '?')"
+              />
+            </Transition>
+            <div class="hero__visual-card-overlay">
+              <div class="hero__visual-card-name">{{ heroRole.name }}</div>
+              <div class="hero__visual-card-tagline" v-if="heroRole.greeting">
+                {{ heroRole.greeting.substring(0, 50) }}{{ heroRole.greeting.length > 50 ? '...' : '' }}
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </section>
 
-    <!-- ── 分类 Tabs ─────────────────────────────────────── -->
-    <nav class="category-tabs">
-      <button
-        v-for="tab in TABS"
-        :key="tab.value"
-        class="category-tabs__item"
-        :class="{ 'is-active': activeTab === tab.value }"
-        @click="selectTab(tab.value)"
-      >{{ tab.label }}</button>
-    </nav>
+    <!-- ── 角色聊天与分类标题组合 ───────────────────────── -->
+    <div class="discovery__section">
+      <div class="discovery__section-header">
+        <h2 class="discovery__section-title">✨ 角色聊天</h2>
+      </div>
+
+      <!-- ── 分类 Tabs ─────────────────────────────────────── -->
+      <nav class="category-tabs">
+        <button
+          v-for="tab in TABS"
+          :key="tab.value"
+          class="category-tabs__item"
+          :class="{ 'is-active': activeTab === tab.value }"
+          @click="selectTab(tab.value)"
+        >{{ tab.label }}</button>
+      </nav>
+    </div>
 
     <!-- ── 内容卡片网格 ──────────────────────────────────── -->
     <section class="content-grid">
@@ -93,10 +113,9 @@
           <div class="content-card__gradient"></div>
           <div class="content-card__label">
             <strong>{{ role.name }}</strong>
-            <span v-if="role.chatCount">{{ role.chatCount.toLocaleString() }} 次对话</span>
+            <p class="content-card__desc">{{ role.greeting || role.description || '开始一段对话' }}</p>
           </div>
         </div>
-        <p class="content-card__desc">{{ role.greeting || role.description || '开始一段对话' }}</p>
       </div>
     </section>
 
@@ -115,7 +134,7 @@ import { chatHistoryStore } from '@/store'
 import type { roleInfo } from '@/types/common'
 import { onAvatarError } from '@/utils/avatar'
 import { ElMessage } from 'element-plus'
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import RoleDialog from './components/RoleDialog.vue'
 
@@ -125,12 +144,12 @@ const TABS = [
   { label: '推荐', value: '' },
   { label: '女', value: '女' },
   { label: '男', value: '男' },
-  { label: '奇幻', value: '奇幻' },
-  { label: '游戏', value: '游戏' },
-  { label: '动漫', value: '动漫' },
-  { label: '影视', value: '影视' },
-  { label: '历史', value: '历史' },
-  { label: '科幻', value: '科幻' },
+  { label: '🔮 奇幻', value: '奇幻' },
+  { label: '🎮 游戏', value: '游戏' },
+  { label: '📚 动漫', value: '动漫' },
+  { label: '🎬 影视', value: '影视' },
+  { label: '🏮 历史', value: '历史' },
+  { label: '🛸 科幻', value: '科幻' },
 ]
 
 // ── 精选 & Hero ──────────────────────────────────────────
@@ -138,10 +157,33 @@ const featuredRoles = ref<roleInfo[]>([])
 const heroIndex = ref(0)
 const heroRole = computed(() => featuredRoles.value[heroIndex.value] ?? null)
 
+// 控制左右滑动动效方向
+const slideDirection = ref('slide-left')
+const trackRef = ref<HTMLElement | null>(null)
+
 const switchHero = (dir: number) => {
-  const next = heroIndex.value + dir
-  if (next >= 0 && next < featuredRoles.value.length) heroIndex.value = next
+  slideDirection.value = dir > 0 ? 'slide-left' : 'slide-right'
+  const len = featuredRoles.value.length
+  if (len === 0) return
+  // 无极滚动算式
+  heroIndex.value = (heroIndex.value + dir + len) % len
 }
+
+const selectHero = (i: number) => {
+  if (i === heroIndex.value) return
+  slideDirection.value = i > heroIndex.value ? 'slide-left' : 'slide-right'
+  heroIndex.value = i
+}
+
+watch(heroIndex, () => {
+  // 当选中项改变时，确保缩略图平滑滚动到视野中央
+  nextTick(() => {
+    if (trackRef.value && trackRef.value.children[heroIndex.value]) {
+      const activeEl = trackRef.value.children[heroIndex.value] as HTMLElement
+      activeEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' })
+    }
+  })
+})
 
 // ── 角色列表 ─────────────────────────────────────────────
 const roleList = ref<roleInfo[]>([])
@@ -211,47 +253,78 @@ onMounted(async () => {
 .discovery {
   display: flex;
   flex-direction: column;
-  gap: 32px;
+  gap: 24px;
   max-width: 1200px;
   margin: 0 auto;
-  padding: 32px 32px 48px;
+  padding: 20px 32px 32px;
 }
 
 /* ── 页面标题 ─────────────────────────────────────────────── */
 .discovery__header {
   display: flex;
   flex-direction: column;
-  gap: 4px;
 }
 
 .discovery__title {
   margin: 0;
-  font-size: 24px;
+  font-size: 26px;
   font-weight: 700;
   color: var(--vt-text);
-}
-
-.discovery__subtitle {
-  margin: 0;
-  font-size: 14px;
-  color: var(--vt-text-muted);
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 /* ── Hero Banner ─────────────────────────────────────────── */
 .hero {
+  position: relative;
   display: flex;
   flex-direction: column;
-  border-radius: 20px;
+  border-radius: 28px;
   overflow: hidden;
-  background: var(--vt-surface);
-  border: 1px solid var(--vt-line);
+  box-shadow: 0 12px 40px oklch(0% 0 0 / 0.15);
 }
 
+.hero__bg-wrap {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.hero__bg-wrap img {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: blur(50px) saturate(1.8); /* 强模糊与提高饱和度 */
+  transform: scale(1.15); /* 防止模糊边缘露空白 */
+}
+
+.hero__bg-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, oklch(0% 0 0 / 0.75) 0%, oklch(0% 0 0 / 0.45) 100%);
+}
+
+.hero-bg-anim-enter-active,
+.hero-bg-anim-leave-active {
+  transition: opacity 0.8s ease;
+}
+.hero-bg-anim-enter-from,
+.hero-bg-anim-leave-to { opacity: 0; }
+.hero-bg-anim-leave-active { position: absolute; inset: 0; }
+
 .hero__main {
-  display: grid;
-  grid-template-columns: 1fr 440px;
-  height: 420px;
   position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  flex-wrap: wrap; /* 处理移动端换行 */
+  padding: 40px 48px;
 }
 
 /* 左侧文案 */
@@ -259,10 +332,10 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 14px;
-  padding: 40px 44px;
-  position: relative;
-  z-index: 1;
+  gap: 12px;
+  padding: 10px 0;
+  flex: 1;
+  min-width: 320px;
 }
 
 .hero__badge {
@@ -278,34 +351,35 @@ onMounted(async () => {
 
 .hero__name {
   margin: 0;
-  font-size: 36px;
+  font-size: 38px;
   font-weight: 800;
-  line-height: 1.12;
+  line-height: 1.2;
   letter-spacing: -0.4px;
-  color: var(--vt-text);
+  color: #ffffff; /* 深色背景上采用白字 */
 }
 
 .hero__desc {
   margin: 0;
   font-size: 15px;
   line-height: 1.7;
-  color: var(--vt-text-soft);
+  color: oklch(90% 0 0); /* 浅灰偏白 */
   display: -webkit-box;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  max-width: 34ch;
+  max-width: 460px;
 }
 
 .hero__actions {
   display: flex;
   align-items: center;
   gap: 14px;
-  margin-top: 8px;
+  margin-top: 4px;
+  margin-bottom: 16px;
 }
 
 .hero__cta {
-  padding: 12px 28px;
+  padding: 12px 32px;
   border: 0;
   border-radius: 999px;
   background: var(--vt-brand);
@@ -321,86 +395,52 @@ onMounted(async () => {
 
 .hero__meta {
   font-size: 13px;
-  color: var(--vt-text-muted);
+  color: oklch(80% 0 0);
 }
 
-/* 右侧图片 — 关键：用 grid 子项撑满高度 */
-.hero__visual {
-  position: relative;
-  overflow: hidden;
-  min-height: 0;
-
-  img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    object-position: top center;
-    display: block;
-  }
-}
-
-.hero__visual-fade {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    to right,
-    var(--vt-surface) 0%,
-    color-mix(in srgb, var(--vt-surface) 50%, transparent) 25%,
-    transparent 60%
-  );
-  pointer-events: none;
-}
-
-/* 图片切换动画 */
-.hero-img-enter-active,
-.hero-img-leave-active {
-  transition: opacity 0.35s ease;
-}
-.hero-img-enter-from,
-.hero-img-leave-to { opacity: 0; }
-.hero-img-leave-active { position: absolute; inset: 0; }
-
-/* ── 角色切换区（Banner 内部底部） ────────────────────────── */
-.hero__switcher {
+/* 角色切换区（内联） */
+.hero__switcher-inline {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 12px 20px;
-  border-top: 1px solid var(--vt-line-subtle);
-  background: var(--vt-surface);
+  width: 100%;
 }
 
 .hero__switcher-arrow {
   display: grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   flex-shrink: 0;
-  border: 1px solid var(--vt-line);
+  border: 1px solid oklch(100% 0 0 / 0.3);
   border-radius: 50%;
-  background: var(--vt-surface);
-  color: var(--vt-text-soft);
-  font-size: 16px;
+  background: transparent;
+  color: #ffffff;
+  font-size: 18px;
   cursor: pointer;
-  transition: background 0.12s;
+  transition: background 0.15s, border-color 0.15s;
 
-  &:hover:not(:disabled) { background: var(--vt-surface-overlay); }
+  &:hover:not(:disabled) { 
+    background: oklch(100% 0 0 / 0.1);
+    border-color: oklch(100% 0 0 / 0.5);
+  }
   &:disabled { opacity: 0.3; cursor: not-allowed; }
 }
 
 .hero__switcher-track {
   display: flex;
-  gap: 8px;
+  gap: 12px;
   overflow-x: auto;
   scrollbar-width: none;
-  flex: 1;
-
+  scroll-behavior: smooth;
+  max-width: 100%;
+  
   &::-webkit-scrollbar { display: none; }
 }
 
 .hero__switcher-item {
-  width: 48px;
-  height: 48px;
+  width: 58px;
+  height: 80px;
   flex-shrink: 0;
   border: 2px solid transparent;
   border-radius: 12px;
@@ -408,7 +448,7 @@ onMounted(async () => {
   cursor: pointer;
   padding: 0;
   background: var(--vt-surface-overlay);
-  transition: border-color 0.15s, box-shadow 0.15s;
+  transition: transform 0.15s, border-color 0.15s;
 
   img {
     width: 100%;
@@ -418,36 +458,130 @@ onMounted(async () => {
     display: block;
   }
 
-  &:hover { border-color: var(--vt-line); }
+  &:hover { transform: translateY(-2px); }
 
   &.is-active {
     border-color: var(--vt-brand);
-    box-shadow: 0 0 0 2px var(--vt-brand-soft);
   }
+}
+
+/* 右侧图片卡片 */
+.hero__visual-card-wrap {
+  flex-shrink: 0;
+  width: 360px; /* 适中大小 (原 480px，上一版 288px) */
+  display: flex;
+  justify-content: flex-end;
+}
+
+.hero__visual-card {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border-radius: 24px;
+  overflow: hidden;
+  background: var(--vt-surface-overlay);
+  box-shadow: 0 12px 40px oklch(0% 0 0 / 0.15);
+  border: 1px solid var(--vt-line-subtle);
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: top;
+    display: block;
+  }
+}
+
+/* 动效切换：卡片滑动动画 */
+.slide-left-enter-active,
+.slide-left-leave-active,
+.slide-right-enter-active,
+.slide-right-leave-active {
+  transition: all 0.55s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.slide-left-enter-from { opacity: 0; transform: translateX(30px); }
+.slide-left-leave-to { opacity: 0; transform: translateX(-30px) scale(0.98); }
+
+.slide-right-enter-from { opacity: 0; transform: translateX(-30px); }
+.slide-right-leave-to { opacity: 0; transform: translateX(30px) scale(0.98); }
+
+.slide-left-leave-active,
+.slide-right-leave-active { position: absolute; inset: 0; }
+
+.hero__visual-card-overlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 30px 24px 24px;
+  background: linear-gradient(to top, oklch(0% 0 0 / 0.8) 0%, transparent 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+  text-align: center;
+}
+
+.hero__visual-card-name {
+  font-size: 20px;
+  font-weight: 700;
+  color: white;
+  border-bottom: 2px solid var(--vt-brand);
+  padding-bottom: 4px;
+  display: inline-block;
+}
+
+.hero__visual-card-tagline {
+  font-size: 13px;
+  color: oklch(90% 0 0);
+  margin-top: 4px;
+}
+
+/* ── 角色聊天区块标题 ────────────────────────────────────── */
+.discovery__section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.discovery__section-header {
+  display: flex;
+  align-items: center;
+}
+
+.discovery__section-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--vt-text);
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 /* ── 分类 Tabs ───────────────────────────────────────────── */
 .category-tabs {
   display: flex;
-  gap: 6px;
+  gap: 8px;
   overflow-x: auto;
   scrollbar-width: none;
-  padding-top: 8px;
+  padding-bottom: 8px;
 
   &::-webkit-scrollbar { display: none; }
 }
 
 .category-tabs__item {
   flex-shrink: 0;
-  padding: 7px 16px;
-  border: 1px solid var(--vt-line);
+  padding: 8px 18px;
+  border: 0;
   border-radius: 999px;
   background: var(--vt-surface);
   color: var(--vt-text-soft);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
   cursor: pointer;
-  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  transition: background 0.15s, color 0.15s;
 
   &:hover {
     background: var(--vt-surface-overlay);
@@ -456,7 +590,6 @@ onMounted(async () => {
 
   &.is-active {
     background: var(--vt-brand);
-    border-color: var(--vt-brand);
     color: white;
   }
 }
@@ -464,29 +597,29 @@ onMounted(async () => {
 /* ── 内容卡片网格 ────────────────────────────────────────── */
 .content-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   gap: 16px;
 }
 
 .content-card {
   display: flex;
   flex-direction: column;
-  gap: 8px;
   cursor: pointer;
+  height: 100%;
 
   &:hover .content-card__media {
-    transform: translateY(-3px);
-    box-shadow: var(--vt-shadow-md);
+    transform: translateY(-4px);
+    box-shadow: 0 10px 24px oklch(0% 0 0 / 0.12);
   }
 }
 
 .content-card__media {
   position: relative;
-  aspect-ratio: 2 / 3;
+  aspect-ratio: 9 / 13;
   border-radius: 16px;
   overflow: hidden;
   background: var(--vt-surface-overlay);
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
 
   img {
     width: 100%;
@@ -500,7 +633,7 @@ onMounted(async () => {
 .content-card__gradient {
   position: absolute;
   inset: 0;
-  background: linear-gradient(to top, oklch(0% 0 0 / 0.72) 0%, oklch(0% 0 0 / 0.15) 45%, transparent 70%);
+  background: linear-gradient(to top, oklch(0% 0 0 / 0.85) 0%, oklch(0% 0 0 / 0.4) 40%, transparent 60%);
   pointer-events: none;
 }
 
@@ -509,31 +642,27 @@ onMounted(async () => {
   bottom: 0;
   left: 0;
   right: 0;
-  padding: 12px;
+  padding: 16px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 
   strong {
     display: block;
-    font-size: 14px;
+    font-size: 15px;
     font-weight: 600;
     color: white;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-
-  span {
-    display: block;
-    font-size: 11px;
-    color: oklch(75% 0 0);
-    margin-top: 2px;
-  }
 }
 
 .content-card__desc {
   margin: 0;
   font-size: 12px;
-  color: var(--vt-text-muted);
-  line-height: 1.5;
+  color: oklch(80% 0 0);
+  line-height: 1.4;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -544,12 +673,13 @@ onMounted(async () => {
 .discovery__more {
   display: flex;
   justify-content: center;
+  margin-top: 10px;
 
   button {
-    padding: 10px 32px;
+    padding: 12px 36px;
     border: 1px solid var(--vt-line);
     border-radius: 999px;
-    background: var(--vt-surface);
+    background: transparent;
     color: var(--vt-text-soft);
     font-size: 14px;
     cursor: pointer;
@@ -561,29 +691,17 @@ onMounted(async () => {
 }
 
 /* ── 响应式 ──────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .hero__main { flex-direction: column-reverse; justify-content: flex-end; padding: 32px 24px; }
+  .hero__visual-card-wrap { width: 100%; max-width: 360px; align-self: center; }
+  .hero__copy { align-items: center; text-align: center; }
+  .hero__badge { align-self: center; }
+  .hero__switcher-inline { justify-content: center; }
+  .hero__name { font-size: 32px; }
+}
+
 @media (max-width: 768px) {
-  .discovery { padding: 20px 16px 40px; gap: 24px; }
-
-  .hero__main {
-    grid-template-columns: 1fr;
-    height: auto;
-  }
-
-  .hero__visual {
-    height: 240px;
-    order: -1;
-  }
-
-  .hero__visual-fade {
-    background: linear-gradient(to top, var(--vt-surface) 0%, transparent 60%);
-  }
-
-  .hero__copy { padding: 24px; }
-  .hero__name { font-size: 26px; }
-
-  .content-grid {
-    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-    gap: 10px;
-  }
+  .discovery { padding: 20px 16px 40px; gap: 28px; }
+  .content-grid { gap: 12px; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
 }
 </style>
