@@ -212,9 +212,9 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: 32px;
-  max-width: 960px;
+  max-width: 1200px;
   margin: 0 auto;
-  padding: 32px 24px 48px;
+  padding: 32px 32px 48px;
 }
 
 /* ── 页面标题 ─────────────────────────────────────────────── */
@@ -249,7 +249,7 @@ onMounted(async () => {
 
 .hero__main {
   display: grid;
-  grid-template-columns: 1fr 380px;
+  grid-template-columns: 1fr 440px;
   height: 420px;
   position: relative;
 }
