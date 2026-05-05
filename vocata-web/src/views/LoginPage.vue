@@ -105,7 +105,6 @@ const tabs = [
 
 // 响应式数据
 const isMobileDevice = computed(() => isMobile())
-const layoutClass = computed(() => (isMobileDevice.value ? 'mobile' : 'pc'))
 const activeTab = ref<'login' | 'register'>('login')
 
 const loginForm = ref<LoginParams>({
