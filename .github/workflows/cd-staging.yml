@@ -10,7 +10,7 @@ permissions:
 
 concurrency:
   group: staging-deploy
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   deploy-staging:
