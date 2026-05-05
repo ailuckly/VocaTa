@@ -96,7 +96,6 @@
 import { userApi } from '@/api/modules/user'
 import { chatHistoryStore } from '@/store'
 import { isMobile } from '@/utils/isMobile'
-import { useTheme } from '@/composables/useTheme'
 import { removeToken } from '@/utils/token'
 import { onAvatarError } from '@/utils/avatar'
 import { computed, onMounted, ref } from 'vue'
@@ -109,7 +108,6 @@ const router = useRouter()
 const route = useRoute()
 const isMobileDevice = isMobile()
 const historyStore = chatHistoryStore()
-const { isDark } = useTheme()
 
 const userInfo = ref({ nickname: '用户', avatar: '' })
 const userMenuOpen = ref(false)

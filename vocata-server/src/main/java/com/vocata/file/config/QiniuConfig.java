@@ -81,6 +81,9 @@ public class QiniuConfig {
      * 根据配置获取七牛云区域
      */
     private Region getQiniuRegion() {
+        if (region == null) {
+            return Region.autoRegion();
+        }
         switch (region.toLowerCase()) {
             case "huadong":
                 return Region.huadong();

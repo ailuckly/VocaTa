@@ -30,12 +30,11 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import AppSidebar from '@/components/shell/AppSidebar.vue'
 import { isMobile } from '@/utils/isMobile'
 
 const isSidebarCollapsed = ref(false)
-const router = useRouter()
 const route = useRoute()
 const isMobileDevice = isMobile()
 const isChatRoute = route.path.startsWith('/chat/')
@@ -48,10 +47,6 @@ onMounted(() => {
 
 const handleToggleSidebar = () => {
   isSidebarCollapsed.value = !isSidebarCollapsed.value
-}
-
-const handleExplore = () => {
-  router.push('/searchRole')
 }
 </script>
 

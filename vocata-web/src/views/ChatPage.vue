@@ -30,6 +30,7 @@
         :muted="isMicMuted"
         :status="voiceStatusText"
         :character-name="getCharacterName()"
+        :character-avatar="characterAvatar"
         @mute="toggleMicrophone"
         @hangup="stopAudioCall"
       />
@@ -348,7 +349,27 @@ const voiceStatusText = computed(() => {
   return '语音对话中'
 })
 
-const visibleVoiceTranscripts = computed(() => voiceTranscripts.value.slice(-6))
+const visibleVoiceTranscripts = computed(() => {
+  const list = [...voiceTranscripts.value]
+  
+  if (currentSTTText.value) {
+    list.push({
+      speaker: 'user',
+      text: currentSTTText.value,
+      timestamp: Number.MAX_SAFE_INTEGER - 1
+    })
+  }
+  
+  if (currentStreamingMessage.value && currentStreamingMessage.value.content) {
+    list.push({
+      speaker: 'ai',
+      text: currentStreamingMessage.value.content,
+      timestamp: Number.MAX_SAFE_INTEGER
+    })
+  }
+
+  return list.slice(-3)
+})
 
 const initializeAIChat = async () => {
   console.log('🔥 开始初始化AI对话系统...')

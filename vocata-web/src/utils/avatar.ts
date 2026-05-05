@@ -3,7 +3,7 @@
  * 根据名字生成彩色字母头像，用于图片加载失败时的 fallback
  */
 
-const PALETTE = [
+const PALETTE: [string, string][] = [
   ['#818cf8', '#312e81'], // indigo
   ['#34d399', '#064e3b'], // emerald
   ['#f472b6', '#831843'], // pink

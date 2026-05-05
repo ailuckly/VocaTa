@@ -193,6 +193,17 @@ Desktop.ini
 /.codex
 /test.sh
 /.superpowers/
+/.claude/
+/.venv/
+/.worktrees/
+
+# backend IDE/build artifacts
+/vocata-server/.factorypath
+/vocata-server/bin/
 
 # planning / progress docs
 /docs/superpowers/
+
+# generated local avatar assets
+/vocata-web/public/avatars/
+/scripts/generate_avatars.py
