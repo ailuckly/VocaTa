@@ -27,6 +27,9 @@ jobs:
         ssh -i "$RUNNER_TEMP/staging_key" \
           -o StrictHostKeyChecking=no \
           -o UserKnownHostsFile=/dev/null \
+          -o ServerAliveInterval=30 \
+          -o ServerAliveCountMax=20 \
+          -o TCPKeepAlive=yes \
           ${{ secrets.STAGING_USER }}@${{ secrets.STAGING_HOST }} <<'EOF'
         set -e
 
@@ -68,7 +71,7 @@ jobs:
 
         echo "[2/5] deploy compose stack"
         echo "当前提交: $GIT_SHA"
-        docker compose --env-file "$ENV_FILE" build --no-cache
+        docker compose --env-file "$ENV_FILE" build --pull
         docker compose --env-file "$ENV_FILE" up -d --wait
 
         echo "[3/5] inspect compose status"
@@ -86,6 +89,9 @@ jobs:
         ssh -i "$RUNNER_TEMP/staging_key" \
           -o StrictHostKeyChecking=no \
           -o UserKnownHostsFile=/dev/null \
+          -o ServerAliveInterval=30 \
+          -o ServerAliveCountMax=20 \
+          -o TCPKeepAlive=yes \
           ${{ secrets.STAGING_USER }}@${{ secrets.STAGING_HOST }} <<'EOF'
         APP_DIR=/home/deploy/deploy/vocata
         REPO_DIR=$APP_DIR/repo
