@@ -13,6 +13,7 @@ import com.vocata.common.result.ApiCode;
 import com.vocata.common.result.ApiResponse;
 import com.vocata.common.result.PageResult;
 import com.vocata.user.service.UserFavoriteService;
+import org.postgresql.util.PGobject;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
@@ -197,13 +198,13 @@ public class CharacterOpenController {
 
         // 复制角色基本信息，处理null值
         response.setId(characterMap.get("id") != null ? Long.valueOf(characterMap.get("id").toString()) : null);
-        response.setCharacterCode((String) characterMap.get("character_code"));
-        response.setName((String) characterMap.get("name"));
-        response.setDescription((String) characterMap.get("description"));
-        response.setGreeting((String) characterMap.get("greeting"));
-        response.setAvatarUrl((String) characterMap.get("avatar_url"));
-        response.setTags((String) characterMap.get("tags"));
-        response.setLanguage((String) characterMap.get("language"));
+        response.setCharacterCode(toStringValue(characterMap.get("character_code")));
+        response.setName(toStringValue(characterMap.get("name")));
+        response.setDescription(toStringValue(characterMap.get("description")));
+        response.setGreeting(toStringValue(characterMap.get("greeting")));
+        response.setAvatarUrl(toStringValue(characterMap.get("avatar_url")));
+        response.setTags(toStringValue(characterMap.get("tags")));
+        response.setLanguage(toStringValue(characterMap.get("language")));
 
         Integer status = (Integer) characterMap.get("status");
         response.setStatus(status);
@@ -239,9 +240,19 @@ public class CharacterOpenController {
         }
 
         // 设置创建者名称
-        response.setCreatorName((String) characterMap.get("creator_name"));
+        response.setCreatorName(toStringValue(characterMap.get("creator_name")));
 
         return response;
+    }
+
+    private String toStringValue(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof PGobject pgObject) {
+            return pgObject.getValue();
+        }
+        return value.toString();
     }
 
     /**
