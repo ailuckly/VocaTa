@@ -228,7 +228,8 @@ public class CharacterAdminController {
         IPage<Character> result = characterService.searchCharacters(
                 page,
                 request.getKeyword(),
-                request.getStatus() // 管理员可以搜索任何状态的角色
+                request.getStatus(), // 管理员可以搜索任何状态的角色
+                request.getTags()
         );
 
         List<CharacterResponse> responseList = result.getRecords().stream()

@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
@@ -69,5 +70,45 @@ class CharacterOpenControllerTest {
 
         assertEquals(200, response.getCode());
         assertEquals("[\"动漫\",\"治愈\"]", response.getData().getList().get(0).getTags());
+    }
+
+    @Test
+    void publicCharacterListPassesTagsToService() {
+        CharacterService characterService = mock(CharacterService.class);
+        CharacterOpenController controller = new CharacterOpenController();
+        ReflectionTestUtils.setField(controller, "characterService", characterService);
+
+        Page<Map<String, Object>> page = new Page<>(1, 15, 0);
+        when(characterService.getPublicCharactersWithCreator(
+                any(), eq(1), isNull(), argThat(tags -> tags != null && tags.equals(List.of("动漫"))),
+                eq("chat_count"), eq("desc")))
+                .thenReturn(page);
+
+        CharacterSearchRequest request = new CharacterSearchRequest();
+        request.setTags(List.of("动漫"));
+
+        ApiResponse<PageResult<CharacterResponse>> response = controller.getPublicCharacters(request);
+
+        assertEquals(200, response.getCode());
+    }
+
+    @Test
+    void searchCharactersPassesTagsToService() {
+        CharacterService characterService = mock(CharacterService.class);
+        CharacterOpenController controller = new CharacterOpenController();
+        ReflectionTestUtils.setField(controller, "characterService", characterService);
+
+        Page<com.vocata.character.entity.Character> page = new Page<>(1, 15, 0);
+        when(characterService.searchCharacters(
+                any(), eq("陪伴"), eq(1), argThat(tags -> tags != null && tags.equals(List.of("治愈")))))
+                .thenReturn(page);
+
+        CharacterSearchRequest request = new CharacterSearchRequest();
+        request.setKeyword("陪伴");
+        request.setTags(List.of("治愈"));
+
+        ApiResponse<PageResult<CharacterResponse>> response = controller.searchCharacters(request);
+
+        assertEquals(200, response.getCode());
     }
 }

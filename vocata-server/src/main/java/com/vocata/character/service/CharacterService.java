@@ -78,7 +78,7 @@ public interface CharacterService {
      * @param status 角色状态，null表示不过滤
      * @return 角色分页列表
      */
-    IPage<Character> searchCharacters(Page<Character> page, String keyword, Integer status);
+    IPage<Character> searchCharacters(Page<Character> page, String keyword, Integer status, List<String> tags);
 
     /**
      * 获取热门角色列表

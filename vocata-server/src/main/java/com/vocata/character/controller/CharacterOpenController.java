@@ -87,7 +87,8 @@ public class CharacterOpenController {
         IPage<Character> result = characterService.searchCharacters(
                 page,
                 request.getKeyword(),
-                CharacterStatus.PUBLISHED // 只搜索已发布的
+                CharacterStatus.PUBLISHED, // 只搜索已发布的
+                request.getTags()
         );
 
         List<CharacterResponse> responseList = result.getRecords().stream()

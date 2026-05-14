@@ -32,6 +32,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -200,6 +201,7 @@ public class CharacterServiceImpl extends ServiceImpl<CharacterMapper, Character
     @Override
     public IPage<Character> getPublicCharacters(Page<Character> page, Integer status, Integer isFeatured,
                                                List<String> tags, String orderBy, String orderDirection) {
+        List<String> normalizedTags = normalizeTags(tags);
         LambdaQueryWrapper<Character> wrapper = new LambdaQueryWrapper<Character>()
                 .eq(Character::getIsPrivate, false);
 
@@ -209,7 +211,14 @@ public class CharacterServiceImpl extends ServiceImpl<CharacterMapper, Character
         if (isFeatured != null) {
             wrapper.eq(Character::getIsFeatured, isFeatured);
         }
-        // TODO: 标签过滤需要使用JSON查询，暂时跳过
+        applyTagFilter(wrapper, normalizedTags);
+
+        if (StringUtils.isBlank(orderBy)) {
+            orderBy = "chat_count";
+        }
+        if (StringUtils.isBlank(orderDirection)) {
+            orderDirection = "desc";
+        }
 
         // 动态排序
         applyOrderBy(wrapper, orderBy, orderDirection);
@@ -235,9 +244,10 @@ public class CharacterServiceImpl extends ServiceImpl<CharacterMapper, Character
     }
 
     @Override
-    public IPage<Character> searchCharacters(Page<Character> page, String keyword, Integer status) {
+    public IPage<Character> searchCharacters(Page<Character> page, String keyword, Integer status, List<String> tags) {
+        List<String> normalizedTags = normalizeTags(tags);
         if (StringUtils.isBlank(keyword)) {
-            return getPublicCharacters(page, status, null, null, "chat_count", "desc");
+            return getPublicCharacters(page, status, null, normalizedTags, "chat_count", "desc");
         }
 
         LambdaQueryWrapper<Character> wrapper = new LambdaQueryWrapper<Character>()
@@ -252,6 +262,8 @@ public class CharacterServiceImpl extends ServiceImpl<CharacterMapper, Character
         if (status != null) {
             wrapper.eq(Character::getStatus, status);
         }
+
+        applyTagFilter(wrapper, normalizedTags);
 
         return this.page(page, wrapper);
     }
@@ -293,6 +305,7 @@ public class CharacterServiceImpl extends ServiceImpl<CharacterMapper, Character
     public IPage<Map<String, Object>> getPublicCharactersWithCreator(Page<Character> page, Integer status,
                                                                    Integer isFeatured, List<String> tags,
                                                                    String orderBy, String orderDirection) {
+        List<String> normalizedTags = normalizeTags(tags);
         // 设置默认排序参数
         if (StringUtils.isBlank(orderBy)) {
             orderBy = "chat_count";
@@ -301,7 +314,14 @@ public class CharacterServiceImpl extends ServiceImpl<CharacterMapper, Character
             orderDirection = "desc";
         }
 
-        return this.baseMapper.selectPublicCharactersWithCreator(page, status, isFeatured, orderBy, orderDirection);
+        return this.baseMapper.selectPublicCharactersWithCreator(
+                page,
+                status,
+                isFeatured,
+                normalizedTags,
+                orderBy,
+                orderDirection
+        );
     }
 
     @Override
@@ -520,6 +540,34 @@ public class CharacterServiceImpl extends ServiceImpl<CharacterMapper, Character
         return "{" + Arrays.stream(array)
                 .map(Object::toString)
                 .collect(Collectors.joining(",")) + "}";
+    }
+
+    private List<String> normalizeTags(List<String> tags) {
+        if (tags == null || tags.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        return tags.stream()
+                .filter(StringUtils::isNotBlank)
+                .map(String::trim)
+                .distinct()
+                .collect(Collectors.toList());
+    }
+
+    private void applyTagFilter(LambdaQueryWrapper<Character> wrapper, List<String> normalizedTags) {
+        if (normalizedTags == null || normalizedTags.isEmpty()) {
+            return;
+        }
+
+        String sql = normalizedTags.stream()
+                .map(this::escapeSqlString)
+                .map(tag -> "'" + tag + "'")
+                .collect(Collectors.joining(", "));
+        wrapper.apply("tag_names && ARRAY[" + sql + "]::text[]");
+    }
+
+    private String escapeSqlString(String value) {
+        return value.replace("'", "''");
     }
 
     /**
