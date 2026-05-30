@@ -44,7 +44,17 @@ vi.mock('@/api/modules/role', () => ({
 
 vi.mock('@/store', () => ({
   chatHistoryStore: () => ({
-    chatHistory: [],
+    chatHistory: [
+      {
+        conversationUuid: 'conv-1',
+        characterId: 'role-1',
+        characterName: '测试角色',
+        characterAvatarUrl: '',
+        greeting: '你好',
+        title: '测试对话',
+        lastMessageSummary: '最近一次对话',
+      },
+    ],
     addChatHistory: vi.fn(),
     getChatHistory: vi.fn().mockResolvedValue(undefined),
   }),
@@ -123,10 +133,21 @@ describe('App theme shell', () => {
   })
 
   it('renders the profile relationship sections', () => {
-    const wrapper = mount(ProfilePage)
+    const wrapper = mount(ProfilePage, {
+      global: {
+        stubs: {
+          RouterLink: {
+            template: '<a><slot /></a>',
+          },
+          'el-icon': {
+            template: '<span><slot /></span>',
+          },
+        },
+      },
+    })
 
-    expect(wrapper.find('[data-test="profile-overview"]').exists()).toBe(true)
-    expect(wrapper.find('[data-test="profile-recents"]').exists()).toBe(true)
-    expect(wrapper.find('[data-test="profile-favorites"]').exists()).toBe(true)
+    expect(wrapper.find('.profile-page__hero').exists()).toBe(true)
+    expect(wrapper.text()).toContain('最近对话')
+    expect(wrapper.text()).toContain('收藏角色')
   })
 })

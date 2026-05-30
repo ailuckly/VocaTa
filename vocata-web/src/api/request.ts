@@ -8,7 +8,10 @@ import router from '@/router'
 const request = axios.create({
   baseURL: import.meta.env.VITE_APP_URL, // 从环境变量读取
   // baseURL: 'http://127.0.0.1:4523/m1/7166225-6890394-default/', // 从环境变量读取
-  timeout: 10000 // 请求超时时间
+  timeout: 10000, // 请求超时时间
+  paramsSerializer: {
+    indexes: null,
+  },
 })
 
 // 请求拦截器

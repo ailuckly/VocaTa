@@ -79,6 +79,11 @@ public interface CharacterMapper extends BaseMapper<Character> {
             "AND c.is_delete = 0 " +
             "<if test='status != null'> AND c.status = #{status} </if>" +
             "<if test='isFeatured != null'> AND c.is_featured = #{isFeatured} </if>" +
+            "<if test='tags != null and tags.size() > 0'>" +
+            " AND c.tag_names && ARRAY[" +
+            "<foreach collection='tags' item='tag' separator=','>#{tag}</foreach>" +
+            "]::text[]" +
+            "</if>" +
             "ORDER BY " +
             "<choose>" +
             "  <when test='orderBy == \"chat_count\"'>" +
@@ -113,6 +118,7 @@ public interface CharacterMapper extends BaseMapper<Character> {
     IPage<Map<String, Object>> selectPublicCharactersWithCreator(Page<?> page,
                                                                 @Param("status") Integer status,
                                                                 @Param("isFeatured") Integer isFeatured,
+                                                                @Param("tags") List<String> tags,
                                                                 @Param("orderBy") String orderBy,
                                                                 @Param("orderDirection") String orderDirection);
 

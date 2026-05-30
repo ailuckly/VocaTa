@@ -11,6 +11,10 @@ import type {
 import type { roleInfo } from '@/types/common'
 
 type RolePayload = Record<string, unknown>
+type PublicRoleSearchParams = {
+  keyword: string
+  tags?: string[]
+}
 
 export const roleApi = {
   // 获取公开角色列表
@@ -30,7 +34,7 @@ export const roleApi = {
     })
   },
   // 搜索角色
-  searchRole(params: { keyword: string }): Promise<Response<{ list: roleInfo[]; total: number }>> {
+  searchRole(params: PublicRoleSearchParams): Promise<Response<{ list: roleInfo[]; total: number }>> {
     return request({
       url: '/api/open/character/search',
       method: 'get',

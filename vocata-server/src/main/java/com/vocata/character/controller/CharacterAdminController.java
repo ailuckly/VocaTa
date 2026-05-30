@@ -228,7 +228,8 @@ public class CharacterAdminController {
         IPage<Character> result = characterService.searchCharacters(
                 page,
                 request.getKeyword(),
-                request.getStatus() // 管理员可以搜索任何状态的角色
+                request.getStatus(), // 管理员可以搜索任何状态的角色
+                request.getTags()
         );
 
         List<CharacterResponse> responseList = result.getRecords().stream()
@@ -301,6 +302,16 @@ public class CharacterAdminController {
     public ApiResponse<Void> deleteCharacter(@PathVariable Long id) {
         characterService.delete(id);
         return ApiResponse.success("角色删除成功");
+    }
+
+    /**
+     * 同步角色标签筛选字段
+     * POST /api/admin/character/sync-tags
+     */
+    @PostMapping("/sync-tags")
+    public ApiResponse<Void> syncTags(@RequestBody(required = false) List<Long> ids) {
+        int syncedCount = characterService.syncCharacterTagsBatch(ids);
+        return ApiResponse.success(String.format("成功同步 %d 个角色的标签筛选字段", syncedCount));
     }
 
     /**

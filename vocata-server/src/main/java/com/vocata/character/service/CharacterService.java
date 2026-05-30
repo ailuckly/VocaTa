@@ -78,7 +78,7 @@ public interface CharacterService {
      * @param status 角色状态，null表示不过滤
      * @return 角色分页列表
      */
-    IPage<Character> searchCharacters(Page<Character> page, String keyword, Integer status);
+    IPage<Character> searchCharacters(Page<Character> page, String keyword, Integer status, List<String> tags);
 
     /**
      * 获取热门角色列表
@@ -156,6 +156,13 @@ public interface CharacterService {
      * @return 是否同步成功
      */
     boolean syncCharacterTags(Long characterId);
+
+    /**
+     * 批量同步角色标签信息
+     * @param characterIds 角色ID列表，为空时同步全部角色
+     * @return 成功同步的数量
+     */
+    int syncCharacterTagsBatch(List<Long> characterIds);
 
     /**
      * 根据标签ID查询角色列表
