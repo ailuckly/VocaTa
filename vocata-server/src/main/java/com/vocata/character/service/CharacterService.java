@@ -158,6 +158,13 @@ public interface CharacterService {
     boolean syncCharacterTags(Long characterId);
 
     /**
+     * 批量同步角色标签信息
+     * @param characterIds 角色ID列表，为空时同步全部角色
+     * @return 成功同步的数量
+     */
+    int syncCharacterTagsBatch(List<Long> characterIds);
+
+    /**
      * 根据标签ID查询角色列表
      * @param page 分页参数
      * @param tagIds 标签ID数组

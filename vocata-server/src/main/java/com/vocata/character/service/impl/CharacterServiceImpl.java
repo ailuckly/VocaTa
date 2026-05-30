@@ -27,6 +27,7 @@ import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -94,6 +95,7 @@ public class CharacterServiceImpl extends ServiceImpl<CharacterMapper, Character
     }
 
     @Override
+    @Transactional
     public Character create(Character character) {
         if (character == null) {
             throw new BizException(ApiCode.PARAM_ERROR);
@@ -144,10 +146,14 @@ public class CharacterServiceImpl extends ServiceImpl<CharacterMapper, Character
         character.setUpdateDate(LocalDateTime.now());
 
         this.save(character);
+        if (hasTagPayload(character)) {
+            syncCharacterTagsOrThrow(character.getId());
+        }
         return character;
     }
 
     @Override
+    @Transactional
     public Character update(Character character) {
         if (character == null || character.getId() == null) {
             throw new BizException(ApiCode.PARAM_ERROR);
@@ -176,6 +182,9 @@ public class CharacterServiceImpl extends ServiceImpl<CharacterMapper, Character
 
         character.setUpdateDate(LocalDateTime.now());
         this.updateById(character);
+        if (hasTagPayload(character)) {
+            syncCharacterTagsOrThrow(character.getId());
+        }
         return this.getById(character.getId());
     }
 
@@ -378,7 +387,7 @@ public class CharacterServiceImpl extends ServiceImpl<CharacterMapper, Character
             throw new BizException(ApiCode.PARAM_ERROR);
         }
 
-        Character character = this.getById(characterId);
+        Character character = super.getById(characterId);
         if (character == null) {
             throw new BizException(ApiCode.DATA_NOT_FOUND, "角色不存在");
         }
@@ -401,6 +410,27 @@ public class CharacterServiceImpl extends ServiceImpl<CharacterMapper, Character
             // 标签同步失败不影响主流程，记录日志但不抛异常
             return false;
         }
+    }
+
+    @Override
+    public int syncCharacterTagsBatch(List<Long> characterIds) {
+        List<Long> targetIds = normalizeCharacterIds(characterIds);
+        if (targetIds.isEmpty()) {
+            targetIds = this.list(new LambdaQueryWrapper<Character>()
+                            .select(Character::getId))
+                    .stream()
+                    .map(Character::getId)
+                    .filter(id -> id != null)
+                    .collect(Collectors.toList());
+        }
+
+        int successCount = 0;
+        for (Long targetId : targetIds) {
+            if (syncCharacterTags(targetId)) {
+                successCount++;
+            }
+        }
+        return successCount;
     }
 
     @Override
@@ -554,6 +584,17 @@ public class CharacterServiceImpl extends ServiceImpl<CharacterMapper, Character
                 .collect(Collectors.toList());
     }
 
+    private List<Long> normalizeCharacterIds(List<Long> characterIds) {
+        if (characterIds == null || characterIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        return characterIds.stream()
+                .filter(id -> id != null && id > 0)
+                .distinct()
+                .collect(Collectors.toList());
+    }
+
     private void applyTagFilter(LambdaQueryWrapper<Character> wrapper, List<String> normalizedTags) {
         if (normalizedTags == null || normalizedTags.isEmpty()) {
             return;
@@ -568,6 +609,24 @@ public class CharacterServiceImpl extends ServiceImpl<CharacterMapper, Character
 
     private String escapeSqlString(String value) {
         return value.replace("'", "''");
+    }
+
+    private void syncCharacterTagsOrThrow(Long characterId) {
+        if (characterId == null) {
+            throw new BizException(ApiCode.OPERATION_FAILED.getCode(), "角色标签同步失败：角色ID为空");
+        }
+        if (!syncCharacterTags(characterId)) {
+            throw new BizException(ApiCode.OPERATION_FAILED.getCode(), "角色标签同步失败");
+        }
+    }
+
+    private boolean hasTagPayload(Character character) {
+        return character != null && (
+                character.getTags() != null
+                        || character.getTagIds() != null
+                        || character.getTagNames() != null
+                        || character.getPrimaryTagIds() != null
+        );
     }
 
     /**
@@ -729,6 +788,9 @@ public class CharacterServiceImpl extends ServiceImpl<CharacterMapper, Character
             // 执行更新
             boolean updated = this.update(updateWrapper);
             if (updated) {
+                if (aiResponse.getTags() != null && !aiResponse.getTags().isEmpty()) {
+                    syncCharacterTagsOrThrow(characterId);
+                }
                 logger.info("角色AI生成字段更新成功，角色ID: {}", characterId);
             } else {
                 logger.error("角色AI生成字段更新失败，角色ID: {}", characterId);

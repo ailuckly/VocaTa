@@ -305,6 +305,16 @@ public class CharacterAdminController {
     }
 
     /**
+     * 同步角色标签筛选字段
+     * POST /api/admin/character/sync-tags
+     */
+    @PostMapping("/sync-tags")
+    public ApiResponse<Void> syncTags(@RequestBody(required = false) List<Long> ids) {
+        int syncedCount = characterService.syncCharacterTagsBatch(ids);
+        return ApiResponse.success(String.format("成功同步 %d 个角色的标签筛选字段", syncedCount));
+    }
+
+    /**
      * 将Character实体转换为CharacterResponse
      */
     private CharacterResponse convertToResponse(Character character) {
