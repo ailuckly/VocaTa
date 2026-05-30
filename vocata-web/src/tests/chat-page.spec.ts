@@ -91,6 +91,9 @@ describe('ChatPage', () => {
           'el-icon': {
             template: '<span><slot /></span>',
           },
+          VoiceCallPanel: {
+            template: '<div data-test="voice-panel" />',
+          },
         },
       },
     })
