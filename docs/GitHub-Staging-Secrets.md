@@ -1,40 +1,31 @@
 # GitHub Staging Secrets 清单
 
-当前 staging 目标机：
+> 本文件说明 staging 部署所需的 GitHub Secrets 及其来源。**不要在本文档中写入真实 IP、私钥内容或指向本机私钥文件的路径**——这些信息只存在于 GitHub 仓库 Secrets 与维护者本地，不进代码库。
 
-- `STAGING_HOST=86.53.161.33`
+当前 staging 目标机（真实值见 GitHub Secrets，不在此明文记录）：
+
+- `STAGING_HOST=<staging 服务器 IP/域名>`
 - `STAGING_USER=deploy`
 - SSH 端口固定为 `22`（当前 workflow 已写死）
 
 ## 必填 Secrets
 
-现在的 staging workflow 只使用仓库级 `Repository secrets`，不再依赖 `Environments -> staging`。
+staging workflow 只使用仓库级 `Repository secrets`，不依赖 `Environments -> staging`。
 
 只需要 3 个 secrets：
 
-- `STAGING_HOST`
-- `STAGING_USER`
-- `STAGING_SSH_KEY`
+- `STAGING_HOST` — 目标机地址
+- `STAGING_USER` — 部署用户（`deploy`）
+- `STAGING_SSH_KEY` — 部署私钥（见下）
 
 ## STAGING_SSH_KEY 来源
 
-当前为 GitHub Actions 生成的 staging deploy key 私钥保存在本机：
+staging deploy key 是一对 ed25519 密钥：
 
-- `/home/an/Projects/goodPro/VocaTa/.local/vocata_staging_ed25519`
+- **私钥**：由维护者在本地生成并保管，**不提交进仓库**。生成后将其完整内容粘贴到 GitHub Secret `STAGING_SSH_KEY`。
+- **公钥**：安装到服务器的部署用户 `~/.ssh/authorized_keys`（`deploy`），如需应急可同时装到 `root`。
 
-对应公钥已经安装到服务器 `root` 用户：
-
-- `/root/.ssh/authorized_keys`
-
-同一把公钥也已经安装到服务器部署用户：
-
-- `/home/deploy/.ssh/authorized_keys`
-
-直接把这份私钥文件的完整内容复制到 GitHub Secret `STAGING_SSH_KEY`：
-
-```bash
-cat /home/an/Projects/goodPro/VocaTa/.local/vocata_staging_ed25519
-```
+> 配置步骤：本地 `ssh-keygen -t ed25519` 生成密钥对 → 公钥追加到服务器 `authorized_keys` → 私钥内容填入 GitHub Secret `STAGING_SSH_KEY`。私钥用完即应妥善保管，切勿写入任何仓库内文档或日志。
 
 ## 当前服务器登录建议
 
@@ -45,7 +36,7 @@ cat /home/an/Projects/goodPro/VocaTa/.local/vocata_staging_ed25519
 
 ## 服务器配置放哪里
 
-业务配置现在不再放 GitHub Secrets，而是放服务器本地：
+业务配置不放 GitHub Secrets，而是放服务器本地：
 
 - `/home/deploy/deploy/vocata/.env`
 
@@ -57,18 +48,14 @@ cat /home/an/Projects/goodPro/VocaTa/.local/vocata_staging_ed25519
 
 ## 前端 IP 暴露说明
 
-如果服务器本地 `.env` 中写的是：
+如果服务器本地 `.env` 中 `VITE_APP_URL` 写成绝对地址（如 `http://<staging-host>:9009`），前端构建产物会直接带上这个地址，浏览器里可见。
 
-- `VITE_APP_URL=http://86.53.161.33:9009`
-
-那么前端构建产物里会直接带这个 IP，浏览器里可见。
-
-如果你想避免把后端 IP 直接打进前端，服务器 `.env` 建议改成：
+避免把后端地址打进前端的做法——服务器 `.env` 改成：
 
 - `VITE_APP_URL=/api`
 
 前提：
 
-- 当前前端镜像内 Nginx 已经把 `/api` 代理到 `vocata-server:9009`
+- 当前前端镜像内 Nginx 已把 `/api` 代理到 `vocata-server:9009`
 
-这会让浏览器只请求当前站点的 `/api`，不再把 `9009` 和后端 IP 显式写进前端包里。
+这样浏览器只请求当前站点的 `/api`，不再把端口和后端地址显式写进前端包里。
