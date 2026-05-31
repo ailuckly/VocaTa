@@ -1,0 +1,88 @@
+# CI 环境配置：仅用于 CI 的 context 加载冒烟测试（ContextLoadSmokeTest）。
+# 目标：让完整 Spring context 在 CI 的空库 + 本地 Redis 上能启动，
+# 从而捕获“启动即崩”类问题（如 Mapper 注解 SQL 的 XML 解析错误）。
+# CI 数据库为空库（项目无 SQL 迁移），故依赖 ci profile 关闭启动期查库副作用
+# （见 ChatCountCacheConstants.Ci.WARMUP_ENABLED = false）。
+server:
+  port: ${SERVER_PORT:9009}
+
+spring:
+  # 数据源：指向 CI service 容器的 PostgreSQL（localhost）
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:vocata_ci}?stringtype=unspecified
+    username: ${DB_USERNAME:vocata}
+    password: ${DB_PASSWORD:vocata}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 5
+      minimum-idle: 1
+      connection-timeout: 30000
+
+  # Redis：指向 CI service 容器的 Redis（localhost）
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      database: 0
+      timeout: 10000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-wait: -1ms
+          max-idle: 8
+          min-idle: 0
+
+  # 邮件：CI 不发邮件，关闭连接测试，使用占位值即可完成 Bean 装配
+  mail:
+    host: ${MAIL_HOST:localhost}
+    port: ${MAIL_PORT:1025}
+    username: ${MAIL_USERNAME:ci@example.com}
+    password: ${MAIL_PASSWORD:ci}
+    protocol: smtp
+    default-encoding: UTF-8
+    test-connection: false
+
+# MyBatis Plus
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.nologging.NoLoggingImpl
+  global-config:
+    db-config:
+      id-type: ASSIGN_ID
+      logic-delete-field: isDelete
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+      insert-strategy: NOT_NULL
+      update-strategy: NOT_NULL
+    banner: false
+
+# Sa-Token（关闭操作日志，CI 安静）
+sa-token:
+  token-name: Authorization
+  timeout: 604800
+  active-timeout: -1
+  is-concurrent: true
+  is-share: true
+  token-style: uuid
+  is-log: false
+  is-read-header: true
+  is-read-cookie: false
+  token-prefix: Bearer
+  alone-redis:
+    database: 0
+
+# AI 服务：CI 不真实调用，使用占位 provider 完成 Bean 装配
+ai:
+  llm:
+    provider: ${AI_LLM_PROVIDER:qiniu}
+  stt:
+    provider: ${AI_STT_PROVIDER:qiniu}
+  tts:
+    provider: ${AI_TTS_PROVIDER:xunfei}
+
+logging:
+  level:
+    com.vocata: info
+    org.springframework: warn
