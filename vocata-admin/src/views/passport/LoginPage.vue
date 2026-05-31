@@ -67,7 +67,7 @@ const activedBtn = () => {
 }
 
 const login = async () => {
-  if (apiForm.password == '' || apiForm.password == '') {
+  if (apiForm.loginName == '' || apiForm.password == '') {
     ElMessage({
       message: '请先填写完表单',
       type: 'error',
@@ -75,7 +75,6 @@ const login = async () => {
   } else {
     fullscreenLoading.value = true
     const res = await userApi.login(apiForm)
-    console.log(res)
 
     if (res.message == '登录成功') {
       ElNotification({
