@@ -131,10 +131,17 @@
 
 ## 快速启动
 
+### 环境要求
+
+- Java `17`
+- Maven
+- Node.js `20.19+` 或 `22.12+`
+- Docker / Docker Compose
+
 ### 启动基础依赖
 
 ```bash
-docker compose up -d
+docker compose up -d postgres redis
 ```
 
 ### 启动后端
@@ -160,11 +167,66 @@ npm install
 npm run dev
 ```
 
+## 常用命令
+
+### 后端
+
+```bash
+cd vocata-server
+mvn spring-boot:run
+mvn test
+mvn clean package -DskipTests
+```
+
+### 用户端
+
+```bash
+cd vocata-web
+npm run dev
+npm run lint
+npm run type-check
+npm run test
+npm run build
+```
+
+### 管理后台
+
+```bash
+cd vocata-admin
+npm run dev
+npm run lint
+npm run type-check
+npm run build
+```
+
+### 本地验证
+
+```bash
+./scripts/check.sh
+./scripts/validate-backend.sh
+./scripts/validate-web.sh
+./scripts/validate-admin.sh
+./scripts/validate-docker.sh
+```
+
+说明：`./scripts/check.sh` 是根目录一键质量检查入口，会依次运行空白检查、后端验证、用户端验证和管理端验证。Docker 编排检查仍保留为单独命令，因为它依赖本机 Docker 环境。
+
+## 开发规范
+
+- AI 协作指南：[`AGENTS.md`](AGENTS.md)
+- 贡献流程：[`CONTRIBUTING.md`](CONTRIBUTING.md)
+- 代码风格：[`CODE_STYLE.md`](CODE_STYLE.md)
+- 开发工作流：[`docs/开发工作流.md`](docs/开发工作流.md)
+- 提交规范：[`docs/提交规范.md`](docs/提交规范.md)
+- 验证清单：[`docs/验证清单.md`](docs/验证清单.md)
+- 测试策略：[`docs/测试策略.md`](docs/测试策略.md)
+
 ## 相关文档
 
 - 开发环境说明：[`docs/开发环境说明.md`](docs/开发环境说明.md)
 - Docker 开发环境：[`docs/Docker开发环境.md`](docs/Docker开发环境.md)
 - 部署环境说明：[`docs/部署环境说明.md`](docs/部署环境说明.md)
 - 验证清单：[`docs/验证清单.md`](docs/验证清单.md)
+- 测试策略：[`docs/测试策略.md`](docs/测试策略.md)
 - 开发工作流：[`docs/开发工作流.md`](docs/开发工作流.md)
 - 提交规范：[`docs/提交规范.md`](docs/提交规范.md)

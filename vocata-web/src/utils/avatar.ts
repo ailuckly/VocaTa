@@ -25,10 +25,20 @@ function pickColor(name: string): [string, string] {
 }
 
 function initials(name: string): string {
-  if (!name) return '?'
-  const parts = name.trim().split(/\s+/)
+  const trimmedName = name.trim()
+  if (!trimmedName) return '?'
+  const parts = trimmedName.split(/\s+/)
   if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase()
-  return name.slice(0, 2).toUpperCase()
+  return trimmedName.slice(0, 2).toUpperCase()
+}
+
+function escapeSvgText(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
 }
 
 /**
@@ -38,7 +48,7 @@ function initials(name: string): string {
  */
 export function generateAvatarSvg(name: string, size = 64): string {
   const [bg, fg] = pickColor(name || '?')
-  const text = initials(name || '?')
+  const text = escapeSvgText(initials(name || '?'))
   const fontSize = size * 0.38
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">

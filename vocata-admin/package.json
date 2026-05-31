@@ -1,5 +1,5 @@
 {
-  "name": "vocata-web",
+  "name": "vocata-admin",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -18,8 +18,11 @@
     "preview": "vite preview",
     "build-only": "vite build",
     "type-check": "vue-tsc --build",
-    "lint": "eslint . --fix",
-    "format": "prettier --write src/"
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write src/",
+    "format:check": "prettier --check src/",
+    "check": "run-s lint type-check build"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.2",
