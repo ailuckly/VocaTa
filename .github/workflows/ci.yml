@@ -3,6 +3,8 @@ name: CI Pipeline
 on:
   pull_request:
     branches: [ develop, master ]
+  push:
+    branches: [ develop, master ]
 
 permissions:
   contents: read
@@ -34,10 +36,16 @@ jobs:
           server:
             - 'vocata-server/**'
             - 'pom.xml'
+            - 'scripts/**'
+            - '.github/workflows/ci.yml'
           web:
             - 'vocata-web/**'
+            - 'scripts/**'
+            - '.github/workflows/ci.yml'
           admin:
             - 'vocata-admin/**'
+            - 'scripts/**'
+            - '.github/workflows/ci.yml'
 
   # 后端服务CI
   backend-ci:
