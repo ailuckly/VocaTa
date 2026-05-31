@@ -71,6 +71,19 @@ public class ChatCountCacheConstants {
     }
 
     /**
+     * CI 环境配置：用于 CI 的 context 加载冒烟测试。
+     * 数据库为空库（项目无 SQL 迁移），因此关闭所有启动期查库的副作用，
+     * 让 context 只验证 Bean 装配与 Mapper 注解 SQL 解析。
+     */
+    public static class Ci {
+        public static final boolean SYNC_ENABLED = false;
+        public static final boolean WARMUP_ENABLED = false;
+        public static final boolean CLEANUP_ENABLED = false;
+        public static final boolean DETAILED_LOGGING = false;
+        public static final boolean PERFORMANCE_MONITORING = false;
+    }
+
+    /**
      * 定时任务cron表达式
      */
     public static final String SYNC_CRON = "0 0 2 * * ?"; // 每天凌晨2点

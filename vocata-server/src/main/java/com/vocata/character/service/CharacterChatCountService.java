@@ -146,6 +146,8 @@ public class CharacterChatCountService {
         if (activeProfiles.length > 0) {
             String profile = activeProfiles[0];
             switch (profile) {
+                case "ci":
+                    return ChatCountCacheConstants.Ci.WARMUP_ENABLED;
                 case "test":
                     return ChatCountCacheConstants.Test.WARMUP_ENABLED;
                 case "prod":

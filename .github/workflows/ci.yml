@@ -137,6 +137,30 @@ jobs:
     needs: detect-changes
     if: needs.detect-changes.outputs.server-changed == 'true'
 
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: vocata
+          POSTGRES_PASSWORD: vocata
+          POSTGRES_DB: vocata_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U vocata"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
     - name: 检出代码
       uses: actions/checkout@v4
@@ -156,6 +180,19 @@ jobs:
 
     - name: 运行后端验证脚本
       run: ./scripts/validate-backend.sh
+
+    - name: Context 加载冒烟测试（验证完整 Spring context 能启动）
+      working-directory: ./vocata-server
+      env:
+        DB_HOST: localhost
+        DB_PORT: '5432'
+        DB_NAME: vocata_ci
+        DB_USERNAME: vocata
+        DB_PASSWORD: vocata
+        REDIS_HOST: localhost
+        REDIS_PORT: '6379'
+        REDIS_PASSWORD: ''
+      run: mvn -Dmaven.repo.local=/tmp/juhao_m2repo -Dspring.profiles.active=ci -Dtest=ContextLoadSmokeTest test
 
   # 前端客户端CI
   frontend-web-ci:
