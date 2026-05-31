@@ -6,6 +6,8 @@ inclusion: always
 
 # VocaTa后端开发规范
 
+> 本文件是后端**编码细则**。通用 AI 协作规则——三层决策边界（always / ask-first / never）、Definition of Done（声称通过前必须贴出验证命令输出）、提交规范、CI 的 commit-lint + secret-scan——以 `AGENTS.md` 为唯一权威源，本文件不重复，只在需要处引用。目录结构见 `.ai-rules/structure.md`，数据库与 Mapper 细则见 `.ai-rules/database.md`。
+
 ## 1. 项目架构总览
 
 ### 1.1 技术栈规范
@@ -14,41 +16,41 @@ inclusion: always
 - Spring Boot 3.1.4 + Java 17
 - MyBatis Plus 3.5.3.2 (ORM框架)
 - Sa-Token 1.37.0 (认证授权)
-- PostgreSQL 42.6.0 (主数据库)
-- Redis (Redisson 3.23.4) (缓存和会话)
+- PostgreSQL JDBC 42.7.11 (主数据库驱动)
+- Redis (Lettuce + Redisson 3.23.4) (缓存和会话)
 - Hutool 5.8.22 (工具库)
 
 **主要依赖**：
 - Spring Boot Validation (参数校验)
 - Spring Boot AOP (切面编程)
-- Spring Dotenv 4.0.0 (环境变量)
+- Spring WebFlux `WebClient` (非阻塞调用第三方 STT/LLM/TTS API)
+- Spring WebSocket / Tyrus (AI 流式聊天)
+- spring-boot-starter-mail (注册邮箱验证)
+- 七牛云 SDK (文件上传)、科大讯飞语音 SDK (STT/TTS)
+- BCrypt (密码加密)
 - Maven (构建工具，使用阿里云镜像)
+
+> 本地环境变量经 `application-local.yml.template` + 环境变量注入；项目**未使用** spring-dotenv。
 
 ### 1.2 项目模块结构
 
 ```
 vocata-server/src/main/java/com/vocata/
 ├── VocataApplication.java          # 应用启动类
-├── config/                         # 配置模块
-│   ├── SaTokenConfig.java         # 安全配置
-│   ├── MybatisPlusConfig.java     # 数据库配置
-│   ├── RedisConfig.java           # Redis配置
-│   └── WebConfig.java             # Web配置
-├── common/                         # 通用组件模块
-│   ├── entity/BaseEntity.java     # 基础实体类
-│   ├── result/                     # 响应结果封装
-│   ├── utils/                      # 工具类
-│   ├── constant/                   # 常量定义
-│   └── exception/                  # 异常处理
-├── auth/                          # 认证授权模块
-├── user/                          # 用户管理模块
-├── character/                     # 角色管理模块
-├── conversation/                  # 对话管理模块
-├── favorite/                      # 收藏功能模块
-├── admin/                         # 管理后台模块
-├── ai/                           # AI集成模块
-└── search/                       # 搜索功能模块
+├── config/                         # 7 个配置类（见 structure.md）
+├── common/                         # BaseEntity、ApiResponse、异常、工具
+├── auth/                           # 注册/登录/邮箱验证/密码重置
+├── user/                           # 用户信息、收藏（UserFavorite）
+├── character/                      # 角色 CRUD、标签、AI 生成
+├── conversation/                   # 会话、消息、自动标题
+├── ai/                             # 多 LLM 流式、STT/TTS、WebSocket（含 llm/stt/tts/pipeline/websocket 子包）
+├── voice/                          # TTS 音色管理
+├── file/                           # 七牛云文件上传
+└── admin/                          # 管理端鉴权、用户管理、音色管理
 ```
+
+> 完整目录树（含各模块子包）见 `.ai-rules/structure.md`。**不存在** `favorite/`、`search/` 独立模块。
+
 
 ## 2. 架构设计规范
 
@@ -131,19 +133,26 @@ UserContext.checkAdmin();
 ### 3.1 实体类设计规范
 
 **基础实体要求**：
-- 所有实体类必须继承`BaseEntity`
-- 使用`@TableName("vocata_prefix")`指定表名
-- 主键策略：`@TableId(type = IdType.ASSIGN_ID)` (雪花ID)
+- **不要假设所有实体都继承 `BaseEntity`**。`User`、`Conversation`、`Message` 继承；`Character`、`UserFavorite`、`CharacterTag` **不继承**。改动前先看具体类，沿用它已有的映射模式，不要强行重构成 `BaseEntity`。
+- 使用`@TableName("vocata_xxx")`指定表名
+- 主键策略：`@TableId(type = IdType.ASSIGN_ID)`（雪花 ID，列类型为 `BIGINT`，**非** `BIGSERIAL` 自增）
 - 逻辑删除：`@TableLogic`在`isDelete`字段
 
 ```java
 @TableName("vocata_user")
-public class User extends BaseEntity {
+public class User extends BaseEntity {   // User 继承 BaseEntity
     @TableId(type = IdType.ASSIGN_ID)
     private Long id;
 
     private String username;
     // 其他字段...
+}
+
+@TableName("vocata_character")
+public class Character {                 // Character 不继承 BaseEntity
+    @TableId(type = IdType.ASSIGN_ID)
+    private Long id;
+    // 自带审计字段或按需定义...
 }
 ```
 
@@ -171,14 +180,30 @@ public class BaseEntity {
 ### 3.2 MyBatis Plus使用规范
 
 **查询方式选择**：
-- 简单查询：直接使用MyBatis Plus内置方法
-- 单行SQL：使用`@Select`、`@Insert`等注解
-- 复杂查询：使用XML映射文件
+- 简单查询：直接使用 MyBatis Plus 内置方法（`selectById`/`selectList`/`selectPage` + `LambdaQueryWrapper`）
+- 动态/复杂 SQL：使用 `@Select("<script> ... </script>")` **注解 + MyBatis 动态标签**（`<if>`/`<foreach>`/`<choose>`）。本项目**不用 XML 映射文件**，`resources/` 下无 mapper XML。
+- 返回专门的 DTO，避免复杂嵌套。
 
-**XML映射规范**：
-- 遵循"单一职责原则"，每个方法一个明确功能
-- 返回专门的DTO对象，避免复杂嵌套
-- 优先使用数据库索引提升性能
+**⚠️ Mapper 注解 SQL 即 XML —— 特殊字符必须转义**（曾导致启动崩溃的真实坑）：
+
+`@Select("<script>...")` 的内容在 Bean 创建阶段按 **XML 解析**。裸写 `&`、`<`、`>` 会触发 `SAXParseException` 使应用**启动即崩**。必须转义：
+
+| 原符号 | 场景 | 写法 |
+|---|---|---|
+| `&&` | PostgreSQL 数组重叠运算符 | `&amp;&amp;` |
+| `&` | 按位/其它 | `&amp;` |
+| `<` | 小于 | `&lt;`（或用 `<![CDATA[ < ]]>`） |
+| `>` | 大于 | `&gt;`（XML 属性内可不转，但建议统一转） |
+
+```java
+// 正确：标签过滤用数组重叠，&& 必须写成 &amp;&amp;
+@Select("<script> SELECT * FROM vocata_character c WHERE 1=1 " +
+        "<if test='tags != null and tags.size() > 0'>" +
+        " AND c.tag_names &amp;&amp; ARRAY[<foreach collection='tags' item='t' separator=','>#{t}</foreach>]::text[]" +
+        "</if> </script>")
+```
+
+XML 解析后 `&amp;&amp;` 还原为 `&&`，PostgreSQL 收到的仍是数组重叠运算符，行为不变。**写完带 `<script>` 的 Mapper，务必本地启动一次或跑 mapper 解析测试**（见 `CharacterMapperSqlSourceTest`），因为 `mvn test` 的纯单元测试 mock 了 Mapper，不会暴露此类问题。
 
 **分页查询规范**：
 ```java
@@ -198,7 +223,7 @@ public PageResult<UserResponse> getUsers(PageRequest pageRequest) {
 - 禁用ENUM类型，使用SMALLINT表示枚举
 
 **字段设计规范**：
-- 主键：`BIGSERIAL PRIMARY KEY`
+- 主键：`BIGINT`（应用层雪花 ID 生成，**非** `BIGSERIAL` 自增）
 - 时间字段：`TIMESTAMP WITH TIME ZONE`
 - JSON数据：使用`JSONB`类型
 - 外键：禁用物理外键，通过关联表实现
@@ -307,7 +332,7 @@ public class PageResult<T> {
 ```java
 public static UserInfoResponse fromEntity(User user) {
     UserInfoResponse response = new UserInfoResponse();
-    response.setId(user.getId());
+    response.setId(String.valueOf(user.getId()));   // ID 必须转 String 返回前端
     response.setUsername(user.getUsername());
     response.setEmail(user.getEmail());
     // 其他字段映射...
