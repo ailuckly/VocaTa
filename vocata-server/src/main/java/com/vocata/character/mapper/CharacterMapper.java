@@ -80,7 +80,7 @@ public interface CharacterMapper extends BaseMapper<Character> {
             "<if test='status != null'> AND c.status = #{status} </if>" +
             "<if test='isFeatured != null'> AND c.is_featured = #{isFeatured} </if>" +
             "<if test='tags != null and tags.size() > 0'>" +
-            " AND c.tag_names && ARRAY[" +
+            " AND c.tag_names &amp;&amp; ARRAY[" +
             "<foreach collection='tags' item='tag' separator=','>#{tag}</foreach>" +
             "]::text[]" +
             "</if>" +
