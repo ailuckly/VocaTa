@@ -47,6 +47,90 @@ jobs:
             - 'scripts/**'
             - '.github/workflows/ci.yml'
 
+  # 提交规范校验（PR 标题 + commit message 格式，纯 shell 无额外依赖）
+  commit-lint:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: 校验 PR 标题与提交信息
+      env:
+        PR_TITLE: ${{ github.event.pull_request.title }}
+        BASE_REF: ${{ github.base_ref }}
+      run: |
+        set -euo pipefail
+        PATTERN='^(feat|fix|refactor|docs|test|chore|style|perf|build|ci|revert)(\([a-z0-9_-]+\))?: .+'
+        echo "格式要求: <type>(可选scope): <summary>"
+        echo "允许类型: feat fix refactor docs test chore style perf build ci revert"
+        echo ""
+        FAILED=0
+
+        echo "PR 标题: $PR_TITLE"
+        if echo "$PR_TITLE" | grep -qE "$PATTERN"; then
+          echo "  ✅ 符合规范"
+        else
+          echo "  ❌ PR 标题不符合 <type>: <summary> 规范"
+          FAILED=1
+        fi
+        echo ""
+
+        git fetch origin "$BASE_REF" --quiet || true
+        COMMITS=$(git log --no-merges --format=%s "origin/${BASE_REF}..HEAD")
+        if [ -z "$COMMITS" ]; then
+          echo "无新增非合并提交，跳过 commit 校验"
+        else
+          echo "提交信息:"
+          while IFS= read -r msg; do
+            [ -z "$msg" ] && continue
+            if echo "$msg" | grep -qE "$PATTERN"; then
+              echo "  ✅ $msg"
+            else
+              echo "  ❌ $msg"
+              FAILED=1
+            fi
+          done <<< "$COMMITS"
+        fi
+        echo ""
+
+        if [ "$FAILED" -ne 0 ]; then
+          echo "::error::提交规范校验失败，请参考 docs/提交规范.md"
+          exit 1
+        fi
+        echo "🎉 提交规范校验通过"
+
+  # 密钥泄露扫描（gitleaks，仅扫描本 PR 引入的变更）
+  secret-scan:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: 安装 gitleaks
+      run: |
+        set -euo pipefail
+        VERSION=8.21.2
+        curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz" -o /tmp/gitleaks.tar.gz
+        tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
+        sudo mv /tmp/gitleaks /usr/local/bin/gitleaks
+        gitleaks version
+
+    - name: 扫描 PR 引入的密钥
+      env:
+        BASE_REF: ${{ github.base_ref }}
+      run: |
+        set -euo pipefail
+        git fetch origin "$BASE_REF" --quiet || true
+        echo "扫描范围: origin/${BASE_REF}..HEAD"
+        gitleaks detect --redact --no-banner -v \
+          --log-opts="origin/${BASE_REF}..HEAD" --exit-code 1
+
   # 后端服务CI
   backend-ci:
     runs-on: ubuntu-latest
@@ -124,7 +208,7 @@ jobs:
   # CI 结果汇总
   ci-summary:
     runs-on: ubuntu-latest
-    needs: [detect-changes, backend-ci, frontend-web-ci, frontend-admin-ci]
+    needs: [detect-changes, commit-lint, secret-scan, backend-ci, frontend-web-ci, frontend-admin-ci]
     if: always()
 
     steps:
@@ -137,6 +221,25 @@ jobs:
 
         # 检查各组件状态
         FAILED=false
+
+        # 提交规范 / 密钥扫描（仅 PR 触发，skipped 视为通过）
+        if [[ "${{ needs.commit-lint.result }}" == "failure" ]]; then
+          echo "| 提交规范 | 全局 | ❌ 失败 |" >> $GITHUB_STEP_SUMMARY
+          FAILED=true
+        elif [[ "${{ needs.commit-lint.result }}" == "success" ]]; then
+          echo "| 提交规范 | 全局 | ✅ 通过 |" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "| 提交规范 | 全局 | ⏭️ 跳过 |" >> $GITHUB_STEP_SUMMARY
+        fi
+
+        if [[ "${{ needs.secret-scan.result }}" == "failure" ]]; then
+          echo "| 密钥扫描 | 全局 | ❌ 失败 |" >> $GITHUB_STEP_SUMMARY
+          FAILED=true
+        elif [[ "${{ needs.secret-scan.result }}" == "success" ]]; then
+          echo "| 密钥扫描 | 全局 | ✅ 通过 |" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "| 密钥扫描 | 全局 | ⏭️ 跳过 |" >> $GITHUB_STEP_SUMMARY
+        fi
 
         # 后端服务
         if [[ "${{ needs.detect-changes.outputs.server-changed }}" == "true" ]]; then
