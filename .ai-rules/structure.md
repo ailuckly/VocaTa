@@ -1,339 +1,164 @@
 ---
 title: Project Structure
-description: "定义项目的目录结构、文件组织和命名约定。"
+description: "定义 VocaTa 的目录结构、模块组织和命名约定。"
 inclusion: always
 ---
 
-# VocaTa项目结构规范
+# VocaTa 项目结构规范
 
-## 项目根目录结构
+> 本文件描述项目的**真实目录结构与命名约定**。跨文件通用规则（决策边界、提交规范、Definition of Done）见 `AGENTS.md`；编码细则见 `.ai-rules/backend.md`、`.ai-rules/frontend.md`、`.ai-rules/database.md`。本文件只在此处权威化「结构与命名」，避免与上层文档重复。
+
+## 仓库根目录
 
 ```
 VocaTa/
-├── .ai-rules/              # AI代理指导文件
-│   ├── product.md         # 产品愿景文档
-│   ├── tech.md           # 技术架构文档
-│   └── structure.md      # 项目结构文档
-├── .gitignore            # Git忽略文件配置
-├── CLAUDE.md             # Claude Code工作指导
-├── README.md             # 项目说明文档
-├── vocata-server/        # 后端服务模块
-├── vocata-web/           # 客户端前端（规划中）
-└── vocata-admin/         # 管理端前端（规划中）
+├── .ai-rules/             # AI 协作技术细则（backend/frontend/database/tech/product/structure）
+├── AGENTS.md              # 唯一权威的 AI 工作契约（决策边界 / DoD / 提交规范）
+├── CLAUDE.md              # Claude Code 入口，指向 AGENTS.md
+├── CONTRIBUTING.md        # 贡献指南
+├── CODE_STYLE.md          # 代码风格
+├── README.md              # 项目说明
+├── .editorconfig          # 编辑器统一配置
+├── docker-compose.yml     # 本地全栈编排
+├── docs/                  # 开发工作流、提交规范、验证清单、测试策略等
+├── scripts/               # check.sh + validate-*.sh 一键质量检查
+├── .github/               # workflows（ci/cd-*/release）+ PR 模板
+├── vocata-server/         # 后端服务（Spring Boot，端口 9009）
+├── vocata-web/            # 用户端前端（Vue 3 + TS + Vite，端口 3000）
+└── vocata-admin/          # 管理端前端（Vue 3 + TS + Tailwind，端口 3001）
 ```
 
-## 后端模块结构（vocata-server）
+三个前后端模块**均已建成**，不是规划中。
 
-### 顶层目录
+## 后端结构（vocata-server）
+
+### 顶层
 ```
 vocata-server/
-├── src/main/java/        # Java源代码
-├── src/main/resources/   # 配置和资源文件
-├── src/test/java/        # 测试代码
-├── target/               # Maven构建输出
-├── .idea/                # IntelliJ IDEA配置
-├── pom.xml               # Maven项目配置
-├── Dockerfile            # Docker构建文件
-└── .env                  # 环境变量配置
+├── src/main/java/com/vocata/   # Java 源码
+├── src/main/resources/         # application*.yml 等配置
+├── src/test/java/              # 测试代码
+├── pom.xml                     # Maven 配置
+└── Dockerfile
 ```
 
-### Java源码包结构
+启动类：`com.vocata.VocataApplication`（**不是** VocataServerApplication）。
+
+### 业务模块（10 个）
 ```
-src/main/java/com/vocata/
-├── VocataServerApplication.java    # Spring Boot启动类
-├── common/                         # 公共组件包
-│   ├── constant/                  # 常量定义
-│   ├── entity/                    # 基础实体类
-│   │   └── BaseEntity.java       # 所有实体继承的基类
-│   ├── exception/                 # 异常处理
-│   │   ├── BizException.java     # 业务异常
-│   │   └── GlobalExceptionHandler.java
-│   ├── result/                    # 响应结果封装
-│   │   ├── ApiResponse.java      # 统一API响应
-│   │   ├── ApiCode.java          # 错误码枚举
-│   │   └── PageResult.java       # 分页结果
-│   └── utils/                     # 工具类
-│       ├── UserContext.java      # 用户上下文工具
-│       └── IpUtils.java          # IP工具类
-├── config/                        # 配置类包
-│   ├── MybatisPlusConfig.java    # MyBatis Plus配置
-│   ├── SaTokenConfig.java        # Sa-Token配置
-│   ├── RedisConfig.java          # Redis配置
-│   └── WebConfig.java            # Web配置
-├── auth/                          # 认证模块
-│   ├── controller/               # 认证控制器
-│   │   └── AuthController.java
-│   ├── service/                  # 认证服务
-│   │   ├── AuthService.java
-│   │   └── impl/
-│   ├── dto/                      # 认证数据传输对象
-│   │   ├── LoginRequest.java
-│   │   ├── LoginResponse.java
-│   │   └── RegisterRequest.java
-│   └── constants/                # 认证相关常量
-├── user/                          # 用户模块
-│   ├── controller/               # 用户控制器
-│   │   └── UserController.java
-│   ├── service/                  # 用户服务
-│   │   ├── UserService.java
-│   │   └── impl/
-│   ├── mapper/                   # 用户数据访问
-│   │   └── UserMapper.java
-│   ├── entity/                   # 用户实体
-│   │   └── User.java
-│   └── dto/                      # 用户数据传输对象
-├── character/                     # 角色模块
-│   ├── controller/               # 角色控制器
-│   ├── service/                  # 角色服务
-│   ├── mapper/                   # 角色数据访问
-│   ├── entity/                   # 角色实体
-│   └── dto/                      # 角色数据传输对象
-├── conversation/                  # 对话模块
-│   ├── controller/               # 对话控制器
-│   ├── service/                  # 对话服务
-│   ├── mapper/                   # 对话数据访问
-│   ├── entity/                   # 对话实体
-│   │   ├── Conversation.java    # 对话会话
-│   │   └── Message.java         # 消息记录
-│   └── dto/                      # 对话数据传输对象
-├── favorite/                      # 收藏模块
-│   ├── controller/               # 收藏控制器
-│   ├── service/                  # 收藏服务
-│   ├── mapper/                   # 收藏数据访问
-│   └── entity/                   # 收藏实体
-├── search/                        # 搜索模块
-│   ├── controller/               # 搜索控制器
-│   └── service/                  # 搜索服务
-├── ai/                           # AI集成模块
-│   ├── client/                   # AI客户端
-│   └── service/                  # AI服务
-└── admin/                        # 管理功能模块
-    ├── controller/               # 管理控制器
-    └── service/                  # 管理服务
+com.vocata/
+├── VocataApplication.java
+├── common/        # config constant controller entity exception handler result utils
+│                  #   ├── entity/BaseEntity.java（部分实体继承，非全部）
+│                  #   ├── result/{ApiResponse, ApiCode, PageResult}
+│                  #   ├── exception/{BizException, GlobalExceptionHandler}
+│                  #   └── utils/{UserContext, ...}
+├── config/        # 7 个配置类（见下）
+├── auth/          # constants controller dto entity service（注册/登录/邮箱验证/密码重置）
+├── user/          # constants controller dto entity mapper service（含 UserFavorite 收藏）
+├── character/     # constants controller dto entity mapper service task（角色 CRUD/标签/AI 生成）
+├── conversation/  # constants controller dto entity mapper service（会话/消息/自动标题）
+├── ai/            # config controller dto llm pipeline response service stt tts websocket
+├── voice/         # controller dto entity mapper service（TTS 音色管理）
+├── file/          # config constants controller dto service（七牛云上传）
+└── admin/         # controller dto service（管理端鉴权/用户管理/音色管理）
 ```
 
-### 资源文件结构
+**没有** `favorite/` 或 `search/` 独立模块：收藏属于 `user`（实体 `UserFavorite`），无搜索模块。
+
+### config 模块真实内容（7 个）
+```
+config/
+├── MybatisPlusConfig.java   # 分页/逻辑删除
+├── SaTokenConfig.java       # 路由鉴权
+├── RedisConfig.java         # Lettuce/Redisson
+├── WebConfig.java
+├── WebMvcConfig.java        # /api 前缀、拦截器
+├── WebClientConfig.java     # WebFlux WebClient（第三方 API）
+└── WebSocketConfig.java     # AI 流式聊天 WebSocket
+```
+
+### ai 模块子包（AI 流式核心）
+```
+ai/
+├── llm/         # LlmProvider 抽象 + Qiniu/OpenAi/Gemini/SiliconFlow 实现
+├── stt/         # SttClient → Qiniu/Xunfei
+├── tts/         # TtsClient → Volcan/Xunfei
+├── pipeline/    # STT → LLM → TTS 编排
+├── websocket/   # AiChatWebSocketHandler（fragile core，改动需 ask-first）
+├── response/    # 流式响应封装
+├── controller/ service/ dto/ config/
+```
+
+### 资源文件（真实）
 ```
 src/main/resources/
-├── application.yml               # 默认配置（本地开发）
-├── application-test.yml          # 测试环境配置
-├── application-prod.yml          # 生产环境配置
-├── logback-spring.xml           # 日志配置
-├── static/                      # 静态资源
-├── templates/                   # 模板文件
-├── mapper/                      # MyBatis XML映射文件
-│   ├── user/
-│   ├── character/
-│   └── conversation/
-└── db/                          # 数据库相关
-    └── migration/               # SQL迁移脚本
-        ├── V1__init_schema.sql
-        └── V2__add_character_tables.sql
+├── application.yml                 # 默认 active profile = local
+├── application-local.yml.template  # 本地配置模板（实际 application-local.yml 由本地生成/不入库）
+├── application-test.yml
+├── application-prod.yml
+├── logback-spring.xml
+└── static/
 ```
 
-## 模块设计原则
+**注意**：项目**无 SQL 迁移**（无 `db/migration/`、无 `.sql` 文件），Mapper 用 **MyBatis 注解**（`@Select` 等）而非 XML 映射文件。建表方式见 `.ai-rules/database.md`。
 
-### 1. 业务模块独立性
-- 每个业务模块（user、character、conversation等）保持相对独立
-- 模块间通过service接口进行交互，避免直接依赖
-- 公共功能放在common包中供各模块使用
+## 前端结构
 
-### 2. 标准目录结构
-每个业务模块必须包含以下标准目录：
-- `controller/` - REST API控制器
-- `service/` - 业务逻辑服务层
-- `mapper/` - MyBatis数据访问层
-- `entity/` - 数据库实体类
-- `dto/` - 数据传输对象
+两个前端都是 **Vue 3 + TypeScript + Vite**（`<script setup>` + Composition API + Pinia + Vue Router 4 + Axios）。入口是 `src/main.ts`，配置文件是 `.ts`（非 `.js`）。详细规范见 `.ai-rules/frontend.md`。
 
-### 3. 分层架构约束
-- Controller层：只处理HTTP请求响应，不包含业务逻辑
-- Service层：核心业务逻辑，可调用其他Service和Mapper
-- Mapper层：纯数据访问，不包含业务逻辑
-- Entity层：数据库实体，继承BaseEntity
-- DTO层：API输入输出对象，与Entity分离
-
-## 命名约定
-
-### 包命名
-- 全小写，使用点分隔：`com.vocata.module.layer`
-- 模块名使用单数形式：`user`、`character`、`conversation`
-- 层级名使用复数形式：`controllers`、`services`、`mappers`
-
-关于返回ID字段时都需要返回string类型给前端。
-
-### 类命名
-- 使用PascalCase（大驼峰）
-- Controller：`{Module}Controller.java`
-- Service接口：`{Module}Service.java`
-- Service实现：`{Module}ServiceImpl.java`
-- Mapper：`{Module}Mapper.java`
-- Entity：`{Module}.java`（业务实体名）
-- DTO：根据用途命名，如`LoginRequest.java`、`UserResponse.java`
-
-### 方法命名
-- 使用camelCase（小驼峰）
-- CRUD操作：`create`、`get`、`update`、`delete`
-- 查询方法：`findBy{Condition}`、`listBy{Condition}`
-- 业务方法：动词开头，语义明确
-
-### 常量命名
-- 全大写，下划线分隔：`MAX_RETRY_COUNT`
-- 按功能分组，放在对应的Constants类中
-
-## 配置文件组织
-
-### 环境配置分离
-- `application.yml` - 本地开发环境（端口9009）
-- `application-test.yml` - 测试环境
-- `application-prod.yml` - 生产环境
-
-### 配置优先级
-1. 环境变量（最高优先级）
-2. `.env`文件
-3. `application-{profile}.yml`
-4. `application.yml`（默认配置）
-
-## 数据库架构规范
-
-### PostgreSQL表设计规范
-- **表命名**：使用`vocata_`前缀，如`vocata_user`、`vocata_character`、`vocata_conversation`
-- **关联表**：以`_relation`结尾，如`vocata_user_character_relation`
-- **字段命名**：下划线命名法，如`create_date`、`user_id`
-- **主键**：统一使用`id` (BIGSERIAL)
-- **外键**：禁用物理外键，通过关联表实现关系
-- **枚举值**：禁用ENUM，使用SMALLINT + 注释
-- **审计字段**：每表包含create_id、update_id、create_date、update_date、is_delete
-
-### 数据库文件结构
-```
-src/main/resources/db/
-├── migration/                   # 数据库迁移脚本
-│   ├── V1__init_core_tables.sql      # 核心表初始化
-│   ├── V2__create_user_tables.sql    # 用户相关表
-│   ├── V3__create_character_tables.sql # 角色相关表
-│   ├── V4__create_conversation_tables.sql # 对话相关表
-│   ├── V5__create_relation_tables.sql # 关联表
-│   ├── V6__create_admin_tables.sql   # 管理表
-│   ├── V7__create_ai_service_tables.sql # AI服务表
-│   └── V8__create_statistics_tables.sql # 统计表
-├── data/                        # 初始化数据
-│   ├── init_admin_user.sql     # 管理员初始化
-│   ├── init_character_data.sql # 角色初始化数据
-│   └── init_ai_service_config.sql # AI服务初始化
-└── schema/                      # 完整数据库结构
-    └── vocata_schema.sql       # 完整建表脚本
-```
-
-## 前端结构规范
-
-### 客户端前端 (vocata-web)
+### 用户端（vocata-web）
 ```
 vocata-web/
-├── public/                 # 静态资源目录
-│   ├── index.html         # HTML入口模板
-│   ├── favicon.ico        # 网站图标
-│   └── assets/            # 公共静态资源
-├── src/                   # 源码目录
-│   ├── api/               # API请求相关
-│   │   ├── index.js       # API入口，集中导出所有接口
-│   │   ├── request.js     # Axios实例配置
-│   │   └── modules/       # 按业务模块划分的API
-│   │       ├── user.js    # 用户相关API
-│   │       ├── character.js # 角色相关API
-│   │       ├── conversation.js # 对话相关API
-│   │       └── favorite.js # 收藏相关API
-│   ├── assets/            # 静态资源
-│   │   ├── images/        # 图片资源
-│   │   ├── styles/        # 全局样式
-│   │   │   ├── index.scss # 样式入口文件
-│   │   │   ├── variables.scss # 全局变量
-│   │   │   ├── mixins.scss # 混合样式
-│   │   │   └── components/ # 组件样式
-│   │   └── icons/         # 图标资源
-│   ├── components/        # 公共组件
-│   │   ├── common/        # 通用基础组件
-│   │   │   ├── BaseButton.vue
-│   │   │   ├── BaseModal.vue
-│   │   │   └── BaseTable.vue
-│   │   └── business/      # 业务组件
-│   │       ├── UserAvatar.vue
-│   │       ├── CharacterCard.vue
-│   │       └── ConversationItem.vue
-│   ├── composables/       # 可复用的组合式函数
-│   │   ├── useAuth.js     # 认证相关
-│   │   ├── useApi.js      # API调用
-│   │   └── useStorage.js  # 本地存储
-│   ├── config/            # 配置文件
-│   │   ├── constants.js   # 常量定义
-│   │   └── env.js         # 环境配置
-│   ├── hooks/             # 自定义钩子
-│   │   └── usePermission.js # 权限钩子
-│   ├── layouts/           # 布局组件
-│   │   ├── MainLayout.vue # 主布局
-│   │   └── AuthLayout.vue # 认证布局
-│   ├── router/            # 路由相关
-│   │   ├── index.js       # 路由入口
-│   │   ├── routes.js      # 路由配置
-│   │   └── guards.js      # 路由守卫
-│   ├── store/             # 状态管理(Pinia)
-│   │   ├── index.js       # Store入口
-│   │   └── modules/       # 按模块划分的状态
-│   │       ├── user.js    # 用户状态
-│   │       ├── character.js # 角色状态
-│   │       └── conversation.js # 对话状态
-│   ├── utils/             # 工具函数
-│   │   ├── auth.js        # 认证工具
-│   │   ├── storage.js     # 存储工具
-│   │   ├── format.js      # 格式化工具
-│   │   └── validation.js  # 验证工具
-│   ├── views/             # 页面组件
-│   │   ├── Home/          # 首页
-│   │   │   └── index.vue
-│   │   ├── User/          # 用户相关页面
-│   │   │   ├── Login.vue  # 登录页
-│   │   │   ├── Register.vue # 注册页
-│   │   │   └── Profile.vue # 个人中心
-│   │   ├── Character/     # 角色相关页面
-│   │   │   ├── List.vue   # 角色列表
-│   │   │   └── Detail.vue # 角色详情
-│   │   ├── Conversation/  # 对话相关页面
-│   │   │   ├── List.vue   # 对话列表
-│   │   │   └── Chat.vue   # 对话界面
-│   │   └── NotFound.vue   # 404页面
-│   ├── App.vue            # 根组件
-│   ├── main.js            # 入口文件
-│   └── vite-env.d.ts      # Vite类型声明
-├── .env                   # 环境变量配置
-├── .env.development       # 开发环境配置
-├── .env.production        # 生产环境配置
-├── .eslintrc.js          # ESLint配置
-├── .prettierrc           # Prettier配置
-├── package.json          # 项目依赖
-├── vite.config.js        # Vite配置
-└── README.md             # 项目说明
+├── index.html
+├── vite.config.ts / vitest.config.ts
+├── eslint.config.ts          # ESLint 9 flat config（非 .eslintrc.js）
+├── tsconfig*.json / env.d.ts
+├── package.json
+└── src/
+    ├── main.ts  App.vue
+    ├── api/                  # Axios 实例 + 按模块接口
+    ├── assets/               # 样式（SCSS）/图片
+    ├── components/
+    ├── composables/          # 组合式函数
+    ├── layouts/  router/  store/  views/
+    ├── types/                # TS 类型定义
+    └── tests/                # Vitest 单测（如 avatar.spec.ts）
 ```
 
-### 管理端前端 (vocata-admin)
+### 管理端（vocata-admin）
 ```
 vocata-admin/
-├── public/               # 静态资源目录
-├── src/                  # 源码目录
-│   ├── api/              # 管理API
-│   │   └── modules/
-│   │       ├── admin.js  # 管理员API
-│   │       ├── user.js   # 用户管理API
-│   │       └── character.js # 角色管理API
-│   ├── components/       # 管理组件
-│   │   ├── common/       # 通用组件
-│   │   └── admin/        # 管理专用组件
-│   ├── layouts/          # 管理布局
-│   │   └── AdminLayout.vue
-│   ├── views/            # 管理页面
-│   │   ├── Dashboard/    # 仪表板
-│   │   ├── UserManage/   # 用户管理
-│   │   ├── CharacterManage/ # 角色管理
-│   │   └── SystemConfig/ # 系统配置
-│   └── ...
-└── package.json
+├── vite.config.ts  eslint.config.ts  tsconfig*.json
+└── src/
+    ├── main.ts  App.vue
+    ├── api/  layouts/  router/  store/  utils/  views/  types/
 ```
+管理端额外使用 **Tailwind CSS 4**（`@tailwindcss/vite` + `postcss-pxtorem` 移动端 rem 适配）；用户端使用 SCSS，**不用** Tailwind。两端 token 存储依赖 `js-cookie`。
+
+### 前端脚本差异（已核实）
+- 公共：`dev` `build` `build:local/test/prod` `preview` `type-check`（`vue-tsc`）`lint` `lint:fix` `format` `format:check` `check`（`run-s` 串联）。
+- **仅 vocata-web 有**：`test` / `test:watch`（Vitest）。管理端暂无前端单测脚本。
+
+## 模块与命名约定
+
+### 后端分层（强约束）
+```
+Controller → Service(impl) → Mapper → PostgreSQL/Redis
+```
+- Controller：只处理 HTTP，不含业务逻辑。
+- Service：业务逻辑，接口 + `impl/` 实现。
+- Mapper：纯数据访问（MyBatis 注解）。
+- Entity：数据库实体，**部分**继承 `BaseEntity`（`User`/`Conversation`/`Message` 继承；`Character`/`UserFavorite`/`CharacterTag` 不继承——先看具体类）。
+- DTO：API 输入输出，与 Entity 分离；复杂模块用 `dto/request`、`dto/response` 子目录（如 conversation）。
+
+### 命名
+- 包名：`com.vocata.{module}.{layer}`，模块名单数（`user`/`character`），**层级名单数**（`controller`/`service`/`mapper`，**不是**复数）。
+- 类名 PascalCase：`{Module}Controller` / `{Module}Service` / `{Module}ServiceImpl` / `{Module}Mapper` / `{Module}.java`（实体）。DTO 按用途：`LoginRequest`、`UserResponse`。
+- 方法 camelCase：CRUD 用 `create/get/update/delete`，查询 `findByXxx`/`listByXxx`。
+- 常量全大写下划线，归入模块 `constants/`。
+- **ID 字段返回前端一律 String**（`String.valueOf(id)`，防 JS 精度丢失）。
+
+### 配置优先级
+环境变量 > `application-{profile}.yml` > `application.yml`（默认 `active: local`）。
+
