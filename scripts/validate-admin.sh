@@ -7,8 +7,11 @@ REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 cd "$REPO_DIR/vocata-admin"
 
+echo "==> admin node version"
+"$SCRIPT_DIR/check-node-version.sh"
+
 echo "==> admin lint"
-npx eslint .
+npm run lint
 
 echo "==> admin type-check"
 npm run type-check

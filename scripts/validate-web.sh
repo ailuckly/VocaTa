@@ -7,11 +7,17 @@ REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 cd "$REPO_DIR/vocata-web"
 
+echo "==> web node version"
+"$SCRIPT_DIR/check-node-version.sh"
+
 echo "==> web lint"
-npx eslint .
+npm run lint
 
 echo "==> web type-check"
 npm run type-check
+
+echo "==> web test"
+npm run test
 
 echo "==> web build"
 npm run build
