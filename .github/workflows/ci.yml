@@ -12,7 +12,7 @@ permissions:
 
 env:
   JAVA_VERSION: '17'
-  NODE_VERSION: '20'
+  NODE_VERSION: '24'
 
 jobs:
   # 检测变更路径
@@ -24,7 +24,7 @@ jobs:
       admin-changed: ${{ steps.changes.outputs.admin }}
     steps:
     - name: 检出代码
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with:
         fetch-depth: 0
 
@@ -53,7 +53,7 @@ jobs:
     if: github.event_name == 'pull_request'
     steps:
     - name: 检出代码
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with:
         fetch-depth: 0
 
@@ -108,7 +108,7 @@ jobs:
     if: github.event_name == 'pull_request'
     steps:
     - name: 检出代码
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with:
         fetch-depth: 0
 
@@ -163,7 +163,7 @@ jobs:
 
     steps:
     - name: 检出代码
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
 
     - name: 设置 JDK ${{ env.JAVA_VERSION }}
       uses: actions/setup-java@v4
@@ -172,7 +172,7 @@ jobs:
         distribution: 'temurin'
 
     - name: 缓存 Maven 依赖
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: /tmp/juhao_m2repo
         key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
@@ -202,10 +202,10 @@ jobs:
 
     steps:
     - name: 检出代码
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
 
     - name: 设置 Node.js ${{ env.NODE_VERSION }}
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@v5
       with:
         node-version: ${{ env.NODE_VERSION }}
         cache: 'npm'
@@ -226,10 +226,10 @@ jobs:
 
     steps:
     - name: 检出代码
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
 
     - name: 设置 Node.js ${{ env.NODE_VERSION }}
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@v5
       with:
         node-version: ${{ env.NODE_VERSION }}
         cache: 'npm'
