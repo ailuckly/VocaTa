@@ -57,28 +57,12 @@ interface LLMTextStreamMessage extends WebSocketMessage {
   timestamp: number
 }
 
-interface TTSAudioMetaMessage extends WebSocketMessage {
-  type: 'tts_audio_meta'
-  audioSize: number
-  format: string
-  sampleRate: number
-  channels: number
-  bitDepth: number
-  timestamp: number
-}
-
 interface TTSResultMessage extends WebSocketMessage {
   type: 'tts_result'
   text: string
   format: string
   sampleRate: number
   voiceId?: string
-  timestamp: number
-}
-
-interface CompleteMessage extends WebSocketMessage {
-  type: 'complete'
-  message: string
   timestamp: number
 }
 
@@ -96,8 +80,6 @@ export class VocaTaWebSocketClient {
   }
 
   connect(): void {
-    console.log('🔄 开始建立WebSocket连接，conversationUuid:', this.conversationUuid)
-
     const token = getToken()
     if (!token) {
       console.error('❌ 未找到认证令牌，无法建立WebSocket连接')
@@ -110,8 +92,6 @@ export class VocaTaWebSocketClient {
     const wsProtocol = isSecure ? 'wss' : 'ws'
     const host = appUrl.replace(/^https?:\/\//, '')
     const wsUrl = `${wsProtocol}://${host}/ws/chat/${this.conversationUuid}?token=${encodeURIComponent(token)}`
-    console.log('🔌 尝试连接WebSocket:', wsUrl)
-    console.log('🔐 使用Token:', token.substring(0, 20) + '...')
 
     try {
       this.manualClose = false
@@ -128,12 +108,6 @@ export class VocaTaWebSocketClient {
     if (!this.ws) return
 
     this.ws.onopen = (event) => {
-      console.log('✅ WebSocket连接已建立')
-      console.log('🔍 WebSocket状态检查:', {
-        readyState: this.ws?.readyState,
-        isOpen: this.ws?.readyState === WebSocket.OPEN,
-        WebSocketOPEN: WebSocket.OPEN
-      })
       this.reconnectAttempts = 0
       this.emit('connected', event)
     }
@@ -141,14 +115,12 @@ export class VocaTaWebSocketClient {
     this.ws.onmessage = (event) => {
       // 检查是否为二进制音频数据
       if (event.data instanceof ArrayBuffer) {
-        console.log(`📦 收到音频数据(ArrayBuffer): ${event.data.byteLength} bytes`)
         this.emit('audioData', event.data)
         return
       }
 
       // 检查是否为Blob音频数据
       if (event.data instanceof Blob) {
-        console.log(`📦 收到音频数据(Blob): ${event.data.size} bytes`)
         // 将Blob转换为ArrayBuffer
         event.data.arrayBuffer().then(arrayBuffer => {
           this.emit('audioData', arrayBuffer)
@@ -161,7 +133,6 @@ export class VocaTaWebSocketClient {
       // 否则按JSON消息处理
       try {
         const message: WebSocketMessage = JSON.parse(event.data)
-        console.log(`📨 收到消息:`, message)
         this.emit('message', message)
       } catch {
         console.error('❌ 解析消息失败:', event.data)
@@ -169,7 +140,6 @@ export class VocaTaWebSocketClient {
     }
 
     this.ws.onclose = (event) => {
-      console.log(`🔌 WebSocket连接关闭: code=${event.code}, reason="${event.reason}", wasClean=${event.wasClean}`)
       this.emit('disconnected', { event, manual: this.manualClose })
       const shouldReconnect = !this.manualClose
       this.ws = null
@@ -199,7 +169,6 @@ export class VocaTaWebSocketClient {
       data: { message: text }
     }
 
-    console.log('📤 发送文字消息:', text)
     this.ws.send(JSON.stringify(message))
   }
 
@@ -229,7 +198,6 @@ export class VocaTaWebSocketClient {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       return
     }
-    console.log(`📡 发送控制指令:`, message)
     this.ws.send(JSON.stringify(message))
   }
 
@@ -258,7 +226,6 @@ export class VocaTaWebSocketClient {
     if (this.reconnectAttempts < this.maxReconnectAttempts) {
       this.reconnectAttempts++
       const delay = Math.pow(2, this.reconnectAttempts) * 1000
-      console.log(`🔄 尝试重连 (${this.reconnectAttempts}/${this.maxReconnectAttempts}) - ${delay}ms后`)
 
       setTimeout(() => {
         this.connect()
@@ -337,7 +304,6 @@ export class AudioManager {
 
   async initialize(): Promise<void> {
     try {
-      console.log('🎵 音频管理器初始化完成（延迟初始化AudioContext）')
       // 不再在初始化时立即创建AudioContext，而是在需要时才创建
       // 这样避免了浏览器的安全策略限制
     } catch (error) {
@@ -402,7 +368,6 @@ export class AudioManager {
   // 延迟初始化AudioContext，在用户交互后调用
   private async ensureAudioContext(): Promise<void> {
     if (!this.audioContext) {
-      console.log('🎵 延迟初始化音频上下文...')
       const AudioContextConstructor =
         window.AudioContext || (window as WindowWithWebkitAudio).webkitAudioContext
       if (!AudioContextConstructor) {
@@ -414,10 +379,7 @@ export class AudioManager {
       if (this.audioContext.state === 'suspended') {
         await this.audioContext.resume()
       }
-
-      console.log('✅ 音频上下文初始化成功')
     } else if (this.audioContext.state === 'suspended') {
-      console.log('🔄 音频上下文处于挂起状态，尝试恢复...')
       await this.audioContext.resume()
     }
   }
@@ -437,7 +399,6 @@ export class AudioManager {
           throw new Error('录音会话已在进行中')
         }
 
-        console.log('🎤 开始实时分块录音模式...')
         this.currentWsClient = wsClient
         this.pendingChunkSends = new Set()
         this.chunkSendFailureCount = 0
@@ -458,8 +419,6 @@ export class AudioManager {
         if (shouldAbort?.()) {
           return abortAndCleanup()
         }
-
-        console.log('🎤 请求麦克风权限...')
 
         // 检查安全上下文（getUserMedia 仅在 HTTPS 或 localhost 下可用）
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -483,12 +442,6 @@ export class AudioManager {
         // 验证音频流
         const tracks = this.audioStream.getTracks()
         const audioTracks = tracks.filter(track => track.kind === 'audio')
-
-        console.log('🔍 音频流详细信息:', {
-          tracks: this.audioStream.getTracks().length,
-          audioTracks: audioTracks.length,
-          active: this.audioStream.active
-        })
 
         if (audioTracks.length === 0 || !this.audioStream.active) {
           throw new Error('未能获取有效的音频轨道')
@@ -546,7 +499,6 @@ export class AudioManager {
                 if (this.silenceFrameCount >= SILENCE_FRAMES_REQUIRED
                     && !this.monitoringOnly
                     && this.sttConfirmedSpeech) {
-                  console.log('🔇 VAD: silence detected, switching to monitoring mode')
                   this.hasSpeechStarted = false
                   this.silenceFrameCount = 0
                   this.speechFrameCount = 0
@@ -581,7 +533,6 @@ export class AudioManager {
 
         this.recordingState = 'recording'
         this.isRecording = true
-        console.log('✅ 开始 PCM 实时录音 (16kHz, mono, Int16, VAD enabled)')
         return true
       } catch (error) {
         this.resetRecordingState({ stopTracks: true })
@@ -625,7 +576,6 @@ export class AudioManager {
               this.recordingContext.close().catch(() => undefined)
               this.recordingContext = null
             }
-            console.log('⏹️ PCM 录音已停止')
             resolve()
           } catch (error) {
             console.error('❌ 停止录音失败:', error)
@@ -657,7 +607,6 @@ export class AudioManager {
     if (this.recordingState === 'recording') {
       this.monitoringOnly = true
       this.sttConfirmedSpeech = false  // 清除 STT 确认，下轮需重新确认
-      console.log('⏸️ 切换为监听模式（barge-in 就绪）')
     }
   }
 
@@ -672,7 +621,6 @@ export class AudioManager {
       this.bargeInTriggered = false
       this.vadGraceRemaining = VAD_GRACE_FRAMES  // 给用户时间准备说话
       this.sttConfirmedSpeech = false
-      console.log('▶️ 恢复录音模式')
       return true
     }
     return false
@@ -728,7 +676,6 @@ export class AudioManager {
 
       source.start()
       this.currentSource = source
-      console.log(`🔊 播放音频: 时长${audioData.duration.toFixed(2)}秒`)
 
       return new Promise((resolve) => {
         source.onended = () => {
@@ -788,7 +735,6 @@ export class AudioManager {
     }
     this.isPlaying = false
     this.notifyPlaybackState(false)
-    console.log('🗑️ 清除音频队列')
   }
 
   // 获取音量级别（用于可视化）
@@ -881,7 +827,6 @@ export class VocaTaAIChat {
 
   async initialize(conversationUuid: string): Promise<void> {
     try {
-      console.log('🚀 初始化AI对话系统...')
 
       // 初始化音频管理器
       await this.audioManager.initialize()
@@ -890,7 +835,6 @@ export class VocaTaAIChat {
       await this.connectWebSocket(conversationUuid)
       this.conversationUuid = conversationUuid
 
-      console.log('✅ AI对话系统初始化完成')
     } catch (error) {
       console.error('❌ AI对话系统初始化失败:', error)
       throw error
@@ -919,7 +863,6 @@ export class VocaTaAIChat {
 
       // 设置事件监听器
       this.wsClient.on('connected', () => {
-        console.log('🎉 WebSocket连接成功，等待服务器确认...')
         // 不在这里resolve，等待服务器状态消息
       })
 
@@ -933,7 +876,6 @@ export class VocaTaAIChat {
           message.type === 'status' &&
           (statusMessage.includes('连接已建立') || statusMessage.includes('WebSocket连接已建立'))
         ) {
-          console.log('🎉 收到服务器连接确认，连接完全建立')
           connectionResolved = true
           this.onConnectionStatusCallback?.('connected', 'WebSocket连接已建立')
           resolve()
@@ -942,7 +884,6 @@ export class VocaTaAIChat {
 
         // 如果还没有连接确认，但收到了任何其他消息（AI回复等），也认为连接成功
         if (!connectionResolved && (message.type === 'llm_text_stream' || message.type === 'text_message')) {
-          console.log('🎯 收到AI消息，连接确认成功')
           connectionResolved = true
           this.onConnectionStatusCallback?.('connected', 'AI系统连接成功')
           resolve()
@@ -966,10 +907,8 @@ export class VocaTaAIChat {
 
       this.wsClient.on('disconnected', (payload: { event: CloseEvent, manual: boolean }) => {
         if (!payload?.manual) {
-          console.log('📡 WebSocket连接断开，正在重连...')
           this.onConnectionStatusCallback?.('disconnected', '语音连接已断开，正在重连...')
         } else {
-          console.log('📡 WebSocket连接已手动关闭')
         }
       })
 
@@ -1010,11 +949,11 @@ export class VocaTaAIChat {
         break
 
       case 'tts_audio_meta':
-        this.handleTTSAudioMeta(message as TTSAudioMetaMessage)
+        this.handleTTSAudioMeta()
         break
 
       case 'complete':
-        this.handleProcessComplete(message as CompleteMessage)
+        this.handleProcessComplete()
         break
 
       case 'error':
@@ -1022,12 +961,9 @@ export class VocaTaAIChat {
         break
 
       case 'barge_in_ack':
-        console.log('✅ Barge-in 确认，截断文本:', (message as Record<string, unknown>).truncatedText
-          ? String((message as Record<string, unknown>).truncatedText).length + '字' : '无')
         break
 
       default:
-        console.log('🔄 收到其他类型消息:', message)
     }
 
     // 触发通用消息回调
@@ -1035,7 +971,6 @@ export class VocaTaAIChat {
   }
 
   private handleSTTResult(message: ServerSttMessage): void {
-    console.log(`🎤 STT识别: ${message.text} (${message.isFinal ? '最终' : '临时'})`)
 
     this.currentSTTText = message.text
     this.onSTTResultCallback?.(message.text, message.isFinal)
@@ -1047,13 +982,11 @@ export class VocaTaAIChat {
   }
 
   private handleLLMTextStream(message: LLMTextStreamMessage): void {
-    console.log(`🤖 LLM响应: ${message.text} (${message.isComplete ? '完成' : '流式'})`)
 
     // 修复：始终累积文本，无论是否完成
     // 流式渲染应该累积所有收到的文本片段
     this.currentLLMResponse += message.text
 
-    console.log(`🔍 当前累积文本长度: ${this.currentLLMResponse.length}`)
 
     this.onLLMStreamCallback?.(this.currentLLMResponse, message.isComplete, message.characterName)
 
@@ -1063,24 +996,20 @@ export class VocaTaAIChat {
   }
 
   private handleTTSResult(message: TTSResultMessage): void {
-    console.log(`🗣️ TTS最终文字: ${message.text} (格式: ${message.format}, 采样率: ${message.sampleRate})`)
 
     if (message.text) {
       this.onLLMStreamCallback?.(message.text, true, message.voiceId)
     }
   }
 
-  private handleTTSAudioMeta(message: TTSAudioMetaMessage): void {
-    console.log(`🔊 TTS音频元数据: ${message.audioSize} bytes, ${message.format}`)
+  private handleTTSAudioMeta(): void {
   }
 
   private handleAudioData(audioBuffer: ArrayBuffer): void {
-    console.log(`🔊 播放音频数据: ${audioBuffer.byteLength} bytes`)
     this.audioManager.addToQueue(audioBuffer)
   }
 
-  private handleProcessComplete(message: CompleteMessage): void {
-    console.log('✅ 处理完成:', message.message)
+  private handleProcessComplete(): void {
     // STT 无结果时 TTS 不播放，不会触发 onAudioPlay(false) → 手动恢复录音
     // 用较长延迟（2s）防止空管线快速循环（噪音误触 → 空 STT → complete → 再触发）
     if (this.isAudioCallActive && this.isContinuousModeActive && !this.audioManager.playing) {
@@ -1136,7 +1065,6 @@ export class VocaTaAIChat {
       let started = false
       let shouldCancel = false
       try {
-        console.log('📞 开始实时分块录音')
 
         await this.ensureWebSocketConnection()
         if (!this.wsClient) {
@@ -1194,7 +1122,6 @@ export class VocaTaAIChat {
 
   // 停止录音
   async stopRecording(): Promise<void> {
-    console.log('📞 停止录音并完成音频流刷新')
 
     if (this.voiceState === 'idle') {
       return
@@ -1252,13 +1179,11 @@ export class VocaTaAIChat {
         // 连续模式：暂停发送但保持麦克风，等待 barge-in 或 TTS 结束后恢复
         this.audioManager.pauseRecording()
         this.wsClient?.stopAudioRecording()  // 发送 audio_end
-        console.log('🔇 VAD 触发：暂停发送，麦克风保持监听')
       }
     })
 
     // 注册 Barge-in 回调：AI 说话时用户插话（麦克风一直开着所以能检测到）
     this.audioManager.setBargeInCallback(() => {
-      console.log('🎤 Barge-in：用户插话，打断 AI')
       this.audioManager.clearQueue()             // 立即停止播放（包括当前 AudioBufferSourceNode）
       this.audioManager.setAISpeaking(false)     // 显式重置，不等播放结束
       this.audioManager.resumeRecording()        // 从监听模式恢复到发送模式
@@ -1266,7 +1191,6 @@ export class VocaTaAIChat {
     })
 
     // 立即开始聆听（GPT Voice 体验）
-    console.log('📞 音频通话已激活，立即开始聆听')
     await this.startRecording()
   }
 
@@ -1320,12 +1244,6 @@ export class VocaTaAIChat {
   // 获取状态
   get connected(): boolean {
     const isConnected = this.wsClient?.isConnected || false
-    console.log('🔍 检查连接状态:', {
-      wsClient: !!this.wsClient,
-      readyState: this.wsClient?.readyState,
-      isConnected: isConnected,
-      expectedReadyState: WebSocket.OPEN
-    })
     return isConnected
   }
 
@@ -1359,7 +1277,6 @@ export class VocaTaAIChat {
 
   // 清理资源
   destroy(): void {
-    console.log('🧹 清理AI对话系统资源')
 
     void this.stopAudioCall()
     this.wsClient?.disconnect()
