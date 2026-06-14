@@ -2,6 +2,7 @@
   "name": "vocata-admin",
   "version": "0.0.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "engines": {
     "node": "^20.19.0 || >=22.12.0"
@@ -11,6 +12,7 @@
     "dev:local": "vite --mode local",
     "dev:test": "vite --mode test",
     "build": "vite build --mode production",
+    "build:development": "vite build --mode development",
     "build:local": "vite build --mode local",
     "build:test": "vite build --mode test",
     "build:prod": "vite build --mode production",

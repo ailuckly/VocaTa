@@ -63,7 +63,9 @@ Request DTOs use `@Valid` with JSR-303 annotations (`@NotBlank`, `@Email`, `@Len
 
 ```bash
 # Backend (port 9009)
+set -a && source .env && set +a                # export local env first
 cd vocata-server && mvn spring-boot:run        # default profile (local)
+mvn -Dmaven.repo.local=/tmp/juhao_m2repo spring-boot:run
 mvn clean package -DskipTests                  # build JAR
 mvn test                                        # run tests
 
@@ -71,9 +73,13 @@ mvn test                                        # run tests
 cd vocata-web && npm install && npm run dev
 cd vocata-admin && npm install && npm run dev
 
-# Local quality gate (whitespace + backend + web + admin)
+# Full Docker mode for container-build validation
+docker compose up -d --build
+
+# Local quality gate (docs/metadata + backend + web + admin)
 ./scripts/check.sh
 ```
 
-Full command list, env profiles, CI/CD details, and the module map: see `AGENTS.md`
-and `.ai-rules/`.
+Daily development normally uses Docker only for PostgreSQL / Redis:
+`docker compose up -d postgres redis`. Full command list, env profiles, CI/CD details,
+and the module map: see `AGENTS.md`, `docs/开发环境说明.md`, and `.ai-rules/`.

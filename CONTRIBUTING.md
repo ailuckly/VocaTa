@@ -4,7 +4,15 @@
 
 ## 本地启动流程
 
-### 1. 准备基础依赖
+### 1. 准备环境变量
+
+```bash
+cp .env.example .env
+```
+
+`.env` 是本地私有配置文件，可能包含真实密钥，必须保持未跟踪状态。不要提交、截图或粘贴 `.env` 内容。
+
+### 2. 准备基础依赖
 
 ```bash
 docker compose up -d postgres redis
@@ -13,19 +21,26 @@ docker compose up -d postgres redis
 如需一次性启动完整本地环境：
 
 ```bash
-docker compose up -d
+docker compose up -d --build
 ```
 
-### 2. 启动后端
+全量 Docker 模式用于检查容器构建和近似发布态静态前端；日常开发优先只用 Docker 启动 PostgreSQL / Redis，然后在宿主机运行后端和前端。
+
+### 3. 启动后端
+
+后端本机运行时不会自动读取根目录 `.env`，需要先导入环境变量：
 
 ```bash
+set -a
+source .env
+set +a
 cd vocata-server
 mvn spring-boot:run
 ```
 
 后端默认端口为 `9009`，本地默认 profile 当前由 `application.yml` 设置为 `local`。
 
-### 3. 启动用户端
+### 4. 启动用户端
 
 ```bash
 cd vocata-web
@@ -35,7 +50,7 @@ npm run dev
 
 用户端默认端口为 `3000`。
 
-### 4. 启动管理后台
+### 5. 启动管理后台
 
 ```bash
 cd vocata-admin
@@ -61,7 +76,7 @@ npm run dev
 
 1. 从 `develop` 更新最新代码。
 2. 创建语义清晰的工作分支。
-3. 修改前先阅读相关模块、现有测试、`.ai-rules/` 和 `AGENTS.md`。
+3. 修改前先阅读相关模块、现有测试、`.ai-rules/`、`AGENTS.md` 和 `docs/AI协作流程.md`。
 4. 小步提交，保持每个 commit 可独立解释。
 5. 按改动范围运行本地检查。
 6. 提交 PR 到 `develop`。
@@ -119,7 +134,7 @@ git diff --check
 
 当前验证脚本说明：
 
-- `check.sh` 执行空白检查、后端验证、用户端验证和管理端验证。
+- `check.sh` 执行文档/模板/元数据检查、后端验证、用户端验证和管理端验证。
 - 后端脚本执行 Maven package baseline 和 test baseline。
 - 用户端脚本执行 ESLint、TypeScript type-check、Vitest、production build。
 - 管理端脚本执行 ESLint、TypeScript type-check、production build。
@@ -169,3 +184,42 @@ PR 描述必须说明：
 - 没有引入不必要的新依赖。
 - API 响应、路由鉴权、数据库写入和错误处理已自查。
 - 涉及 UI 的改动已检查基础响应式表现。
+
+## Issue 流程
+
+- Bug 使用 `.github/ISSUE_TEMPLATE/bug_report.yml`，必须提供复现步骤、期望行为、实际行为和影响范围。
+- Feature 使用 `.github/ISSUE_TEMPLATE/feature_request.yml`，必须说明用户问题、最小方案、替代方案和风险。
+- AI agent task 使用 `.github/ISSUE_TEMPLATE/ai_task.yml`，必须说明目标、范围、高风险边界和验证计划。
+- Question 使用 `.github/ISSUE_TEMPLATE/question.yml`，用于本地环境、工作流和使用问题。
+- 安全问题不要开公开 issue，按 [`SECURITY.md`](SECURITY.md) 私下报告。
+- 支持和排障入口见 [`SUPPORT.md`](SUPPORT.md)。
+- Issue 分流、标签和优先级见 [`docs/维护与分流指南.md`](docs/维护与分流指南.md)。
+
+## AI Agent 协作
+
+AI agent 参与实现、审查或排障时，应遵守 [`docs/AI协作流程.md`](docs/AI协作流程.md)：
+
+- 先确认分支、工作区状态和相关规则。
+- 对功能或 bugfix 明确测试策略。
+- 高风险路径先说明边界：鉴权、数据写入、WebSocket streaming、AI provider、Docker、CI、部署。
+- 结束时列出真实验证命令、结果、未验证项和剩余风险。
+
+需要把任务交给 AI agent 时，优先使用 [`docs/AI任务模板.md`](docs/AI任务模板.md) 约束范围、风险和验证计划。
+
+AI agent 参与 review 或实现后自查时，使用 [`docs/AI审查清单.md`](docs/AI审查清单.md) 输出 findings、test gaps 和剩余风险。
+
+## 架构决策记录
+
+以下变更应考虑新增 ADR，说明和模板见 [`docs/adr/README.md`](docs/adr/README.md)：
+
+- 改变认证、数据写入、API 契约、WebSocket streaming 或 AI provider 接线。
+- 引入、移除或升级关键依赖。
+- 改变 Docker、CI/CD、部署、发布或回滚策略。
+- 建立数据库 migration baseline、版本策略或长期兼容策略。
+
+ADR 应记录背景、决策、影响、备选方案和验证方式。小型局部实现细节不需要 ADR。
+
+## 发布与版本
+
+版本号、tag、release notes 和回滚纪律见 [`docs/版本发布策略.md`](docs/版本发布策略.md)。
+当前项目还没有稳定正式版本，发布前仍以 [`docs/发布检查清单.md`](docs/发布检查清单.md) 作为人工 gate。

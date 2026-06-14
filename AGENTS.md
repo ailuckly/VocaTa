@@ -19,21 +19,29 @@ Tech stack:
 - `scripts/` - local and CI validation scripts
 - `.ai-rules/` - internal project conventions and architecture notes
 - `docs/` - workflow, deployment, and validation documentation
+- `.github/ISSUE_TEMPLATE/` - public issue intake templates
+- `.github/pull_request_template.md` - PR checklist and risk template
+- `docs/AI任务模板.md` - reusable task brief for AI-assisted work
 
 ## Recommended Commands
 
 ### Backend
 
 ```bash
+set -a && source .env && set +a
 cd vocata-server
 mvn spring-boot:run
 mvn spring-boot:run -Dspring-boot.run.profiles=local
+mvn -Dmaven.repo.local=/tmp/juhao_m2repo spring-boot:run
 mvn clean package -DskipTests
 mvn test
 ```
 
 Notes:
 - `application.yml` currently sets `spring.profiles.active=local` by default.
+- Host-run backend needs root `.env` exported before startup.
+- Host-run mode uses `DB_HOST/DB_PORT` and `REDIS_HOST/REDIS_PORT`.
+- Full Docker mode uses `DOCKER_DB_HOST/DOCKER_DB_PORT` and `DOCKER_REDIS_HOST/DOCKER_REDIS_PORT`.
 - Local backend validation is standardized through `scripts/validate-backend.sh`.
 - In constrained environments, this repository often uses `-Dmaven.repo.local=/tmp/juhao_m2repo`.
 
@@ -76,6 +84,13 @@ Current script behavior:
 - `validate-backend.sh` packages the backend and runs tests
 - `validate-web.sh` runs `eslint`, `type-check`, `test`, and `build` in `vocata-web`
 - `validate-admin.sh` runs `eslint`, `type-check`, and `build` in `vocata-admin`
+
+### Local Startup Modes
+
+- Preferred daily mode: `docker compose up -d postgres redis`, then run backend/web/admin on the host.
+- Full Docker mode: `docker compose up -d --build`; use this to validate container builds and static frontend images.
+- Do not commit `.env`; copy `.env.example` and keep real provider keys local.
+- The repository does not yet contain a full schema migration baseline. New empty databases may require a trusted backup or manual schema setup before business APIs work.
 
 ## Architecture
 
@@ -184,6 +199,8 @@ Before making assumptions about a rule, check:
 - `.ai-rules/database.md`
 - `.ai-rules/tech.md`
 - `.ai-rules/structure.md`
+- `docs/AI协作流程.md`
+- `docs/AI任务模板.md`
 
 ## AI Agent Working Agreement
 
@@ -208,12 +225,15 @@ Be ambitious about *how* to solve a problem; be strict about *house style, fragi
 5. Run the validation command that matches the touched module.
 6. Summarize what changed, what was verified, and any remaining risk.
 
+For issue-to-PR AI collaboration, follow `docs/AI协作流程.md` as the public workflow layer. Use `docs/AI任务模板.md` when a task needs an explicit scope, risk, and validation brief.
+
 ### Before Editing Code
 
 Before modifying files, check:
 
 - Current branch and worktree status with `git status --short --branch`.
 - Existing docs that apply to the change: `README.md`, `CONTRIBUTING.md`, `CODE_STYLE.md`, `.ai-rules/*`, and this file.
+- Public workflow docs that apply to AI-assisted work: `docs/AI协作流程.md`, `.github/pull_request_template.md`, and `.github/ISSUE_TEMPLATE/*`.
 - Nearby implementation patterns in the same module.
 - Existing tests or validation scripts that should cover the change.
 - Whether the requested change risks touching auth, data writes, API contracts, WebSocket streaming, third-party AI providers, or deployment configuration.
@@ -261,7 +281,7 @@ If any item cannot be satisfied, say so explicitly instead of implying completio
 
 ### Known Issues and Tech Debt
 
-When you find a real problem that is out of scope for the current task, do not silently fix it and do not silently ignore it. Record it so it survives across sessions and agents. Until a dedicated backlog file exists, list it in the task summary and propose where it should live. Do not let discovered debt disappear.
+When you find a real problem that is out of scope for the current task, do not silently fix it and do not silently ignore it. Record it in `docs/技术债与后续工作.md` so it survives across sessions and agents. Do not record secrets, private data, or vulnerability exploit details there. Do not let discovered debt disappear.
 
 ### Git Commit Requirements
 

@@ -7,8 +7,8 @@ REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 cd "$REPO_DIR"
 
-echo "==> workspace whitespace check"
-git diff --check
+echo "==> docs and metadata validation"
+"$SCRIPT_DIR/validate-docs.sh"
 
 echo "==> backend validation"
 "$SCRIPT_DIR/validate-backend.sh"
@@ -18,4 +18,3 @@ echo "==> web validation"
 
 echo "==> admin validation"
 "$SCRIPT_DIR/validate-admin.sh"
-

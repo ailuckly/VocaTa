@@ -1,0 +1,98 @@
+name: AI agent task
+description: Define a scoped task for an AI coding agent.
+title: "chore: "
+labels:
+  - ai-agent
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this when the task will be implemented, reviewed, or investigated with help from an AI coding agent.
+        Keep secrets, provider keys, private logs, production config, and full `.env` contents out of the issue.
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: What should be true when the task is finished?
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Relevant branch, issue, PR, module, logs, screenshots, or prior decisions.
+    validations:
+      required: true
+  - type: textarea
+    id: must_do
+    attributes:
+      label: Must Complete
+      description: Concrete deliverables the agent must finish.
+      placeholder: |
+        -
+    validations:
+      required: true
+  - type: textarea
+    id: out_of_scope
+    attributes:
+      label: Out Of Scope
+      description: What should the agent avoid changing in this task?
+      placeholder: |
+        -
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected Area
+      multiple: true
+      options:
+        - backend
+        - vocata-web
+        - vocata-admin
+        - WebSocket / streaming
+        - STT / LLM / TTS provider
+        - Docker / local environment
+        - CI / deployment
+        - documentation
+    validations:
+      required: true
+  - type: checkboxes
+    id: risk_boundaries
+    attributes:
+      label: High-Risk Boundaries
+      description: If any item is checked, require risk and rollback notes before implementation.
+      options:
+        - label: Auth / Sa-Token / UserContext
+        - label: Database schema / migration / vocata_* table shape
+        - label: Data write or delete behavior
+        - label: API response contract
+        - label: AiChatWebSocketHandler or STT -> LLM -> TTS chain
+        - label: Third-party AI provider wiring
+        - label: Docker / CI / CD / deployment config
+        - label: Add, remove, or upgrade dependencies
+  - type: textarea
+    id: validation
+    attributes:
+      label: Validation Plan
+      description: Which commands or manual checks should prove the task is done?
+      placeholder: |
+        - [ ] git diff --check
+        - [ ] ./scripts/validate-backend.sh
+        - [ ] ./scripts/validate-web.sh
+        - [ ] ./scripts/validate-admin.sh
+        - [ ] ./scripts/validate-docker.sh
+        - [ ] ./scripts/check.sh
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-flight Checks
+      options:
+        - label: I removed secrets and private data from this task.
+          required: true
+        - label: I defined what is out of scope.
+          required: true
+        - label: I listed validation evidence expected from the agent.
+          required: true

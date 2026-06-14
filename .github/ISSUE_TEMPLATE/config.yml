@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/ailuckly/VocaTa/security/advisories/new
+    about: Do not open public security issues. Follow SECURITY.md and report privately.
+  - name: AI task template
+    url: https://github.com/ailuckly/VocaTa/blob/develop/docs/AI%E4%BB%BB%E5%8A%A1%E6%A8%A1%E6%9D%BF.md
+    about: Use this markdown template when a task needs detailed AI agent scope, risks, and validation.

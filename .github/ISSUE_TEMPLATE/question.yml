@@ -1,0 +1,49 @@
+name: Question / support
+description: Ask a setup, workflow, or usage question.
+title: "docs: "
+labels:
+  - question
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for setup and workflow questions. Do not include secrets, provider keys,
+        private logs, screenshots containing tokens, or full `.env` contents.
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: What are you trying to understand or unblock?
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      multiple: true
+      options:
+        - local setup
+        - backend
+        - vocata-web
+        - vocata-admin
+        - Docker / environment variables
+        - AI provider configuration
+        - development workflow
+        - deployment
+        - documentation
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Include branch, command, error output, or screenshots with secrets redacted.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-flight Checks
+      options:
+        - label: I checked README.md, CONTRIBUTING.md, SUPPORT.md, and docs/开发环境说明.md first.
+          required: true
+        - label: I removed secrets and private data from this question.
+          required: true

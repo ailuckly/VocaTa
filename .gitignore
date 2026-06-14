@@ -33,7 +33,11 @@ vocata-server/!**/src/test/**/target/
 **/coverage/
 
 # 前端环境文件
+.env
+.env.*
+!.env.example
 **/.env
+**/.env.*
 **/.env.local
 **/.env.development.local
 **/.env.test.local
@@ -183,6 +187,7 @@ Desktop.ini
 # 保留重要配置文件示例
 # ================================
 # 保留配置文件模板，但忽略实际配置
+!.env.example
 !**/.env.example
 !**/application-example.yml
 !**/config.example.js
@@ -193,7 +198,9 @@ Desktop.ini
 /.codex
 /test.sh
 /.superpowers/
-/.claude/
+/.claude/*
+!/.claude/agents/
+!/.claude/agents/**
 /.venv/
 /.worktrees/
 
@@ -203,6 +210,10 @@ Desktop.ini
 
 # planning / progress docs
 /docs/superpowers/
+
+# local database export artifacts
+/.local/database-schema-baseline.sql
+/database-schema-baseline.sql
 
 # generated local avatar assets
 /vocata-web/public/avatars/
