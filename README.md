@@ -225,7 +225,7 @@ docker compose up -d --build
 
 当前仓库还没有正式的 schema migration 体系。新建空库后，服务可能能启动，但业务接口会因为缺少表结构或种子数据失败。现阶段请使用已有开发库/备份恢复；后续应补 Flyway/Liquibase 或独立 SQL 初始化脚本。
 
-如果需要为后续 migration baseline 准备可信 schema，可以先运行 `./scripts/export-schema.sh`，它只导出 schema-only DDL，不会导出业务数据。
+如果需要为后续 migration baseline 准备可信 schema，可以先运行 `./scripts/export-schema.sh`，它只导出 schema-only DDL，不会导出业务数据。默认输出到 `.local/database-schema-baseline.sql`，该路径仅用于本地审查准备，不应直接提交；确认后的 baseline SQL 应在单独 PR 中进入正式 migration 目录。
 
 ## 常用命令
 

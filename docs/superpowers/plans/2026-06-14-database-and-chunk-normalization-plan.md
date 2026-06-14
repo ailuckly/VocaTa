@@ -43,13 +43,13 @@ pg_dump \
   --no-owner \
   --no-privileges \
   --dbname="postgresql://${DB_USERNAME}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}" \
-  --file="${1:-docs/database-schema-baseline.sql}"
+  --file="${1:-.local/database-schema-baseline.sql}"
 ```
 
 - [ ] **Step 2: Document the export workflow**
 
 ```markdown
-Run `./scripts/export-schema.sh` against a trusted development or staging database to capture schema-only DDL before any migration PR.
+Run `./scripts/export-schema.sh` against a trusted development or staging database to capture schema-only DDL before any migration PR. The default output is `.local/database-schema-baseline.sql` so local exports are not accidentally committed.
 Do not use the output directly as a migration file until it has been reviewed against `.ai-rules/database.md` and the entity mappings.
 ```
 

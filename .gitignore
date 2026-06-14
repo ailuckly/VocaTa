@@ -198,7 +198,9 @@ Desktop.ini
 /.codex
 /test.sh
 /.superpowers/
-/.claude/
+/.claude/*
+!/.claude/agents/
+!/.claude/agents/**
 /.venv/
 /.worktrees/
 
@@ -208,6 +210,10 @@ Desktop.ini
 
 # planning / progress docs
 /docs/superpowers/
+
+# local database export artifacts
+/.local/database-schema-baseline.sql
+/database-schema-baseline.sql
 
 # generated local avatar assets
 /vocata-web/public/avatars/

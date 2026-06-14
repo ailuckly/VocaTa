@@ -302,12 +302,20 @@ required_patterns = [
     "**/*.crt",
     "**/*.p12",
     "**/*.jks",
+    "/.claude/*",
+    "!/.claude/agents/",
+    "!/.claude/agents/**",
+    "/.local/database-schema-baseline.sql",
+    "/database-schema-baseline.sql",
 ]
 failures = []
 
 for pattern in required_patterns:
     if pattern not in text:
         failures.append(f"{gitignore_path}: missing sensitive ignore pattern {pattern!r}")
+
+if "OUTPUT_FILE=\"${1:-.local/database-schema-baseline.sql}\"" not in Path("scripts/export-schema.sh").read_text(encoding="utf-8"):
+    failures.append("scripts/export-schema.sh: default output must stay under ignored .local/")
 
 if failures:
     print("Sensitive ignore contract mismatch:")

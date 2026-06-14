@@ -222,13 +222,19 @@ fi
 
 echo
 echo "==> sensitive ignore rules"
-for path in ".env.prod" "vocata-web/.env.secret" "test-private-key.pem" "test-private-key.key"; do
+for path in ".env.prod" "vocata-web/.env.secret" "test-private-key.pem" "test-private-key.key" "database-schema-baseline.sql" ".local/database-schema-baseline.sql" ".claude/settings.local.json"; do
   if git check-ignore -q "$path"; then
     ok "$path is ignored by git"
   else
     fail "$path is not ignored by git"
   fi
 done
+
+if git check-ignore -q ".claude/agents/code-reviewer.md"; then
+  fail ".claude/agents is ignored by git; shared Claude agents should remain trackable"
+else
+  ok ".claude/agents is trackable for shared agent definitions"
+fi
 
 if git check-ignore -q .env.example; then
   fail ".env.example is ignored by git"

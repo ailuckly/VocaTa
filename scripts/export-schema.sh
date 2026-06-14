@@ -5,7 +5,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-OUTPUT_FILE="${1:-docs/database-schema-baseline.sql}"
+OUTPUT_FILE="${1:-.local/database-schema-baseline.sql}"
 
 cd "$REPO_DIR"
 
