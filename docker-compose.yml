@@ -44,13 +44,13 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-local}
       SERVER_PORT: 9009
-      DB_HOST: ${DB_HOST:-postgres}
-      DB_PORT: ${DB_PORT:-5432}
+      DB_HOST: ${DOCKER_DB_HOST:-postgres}
+      DB_PORT: ${DOCKER_DB_PORT:-5432}
       DB_NAME: ${DB_NAME:-vocata_db}
       DB_USERNAME: ${DB_USERNAME:-postgres}
       DB_PASSWORD: ${DB_PASSWORD:-postgres123}
-      REDIS_HOST: ${REDIS_HOST:-redis}
-      REDIS_PORT: ${REDIS_PORT:-6379}
+      REDIS_HOST: ${DOCKER_REDIS_HOST:-redis}
+      REDIS_PORT: ${DOCKER_REDIS_PORT:-6379}
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       REDIS_DATABASE: ${REDIS_DATABASE:-0}
       MAIL_USERNAME: ${MAIL_USERNAME:-}

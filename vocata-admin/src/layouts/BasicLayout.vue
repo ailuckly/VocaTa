@@ -97,7 +97,7 @@ const refresh = () => {
   width: auto;
 }
 
-::v-deep #menu .el-sub-menu .el-menu-item {
+:deep(#menu .el-sub-menu .el-menu-item) {
   font-size: 1rem;
 }
 </style>

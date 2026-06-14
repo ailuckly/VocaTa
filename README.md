@@ -1,5 +1,10 @@
 # VocaTa
 
+[![CI](https://github.com/ailuckly/VocaTa/actions/workflows/ci.yml/badge.svg)](https://github.com/ailuckly/VocaTa/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Java 17](https://img.shields.io/badge/Java-17-blue.svg)](vocata-server/pom.xml)
+[![Node.js](https://img.shields.io/badge/Node.js-20.19%2B%20%7C%2022.12%2B%20%7C%2024%2B-green.svg)](scripts/check-node-version.sh)
+
 一个实时语音 AI 角色对话项目。
 
 它不只是“发消息 + 播语音”，而是尽量把对话做得更像真人交流：你可以开口说话、随时打断、继续追问，角色会用自己的语气持续接话。
@@ -109,6 +114,12 @@
 
 `Realtime Voice Chat` `AI Roleplay` `Streaming Response` `Barge-in` `WebSocket` `STT` `LLM` `TTS`
 
+## 项目状态
+
+VocaTa 处于活跃开发阶段，当前以 `develop` 为主要集成分支，功能和部署流程仍在持续收敛。仓库已经补齐基础开源协作入口和 AI agent 工作流，但还没有正式 release 版本和数据库迁移基线；新环境初始化仍可能需要可信备份或手动 schema 准备。
+
+后续成熟度路线见 [`docs/开源成熟度路线图.md`](docs/开源成熟度路线图.md)。
+
 ## 仓库结构
 
 ```text
@@ -135,23 +146,50 @@
 
 - Java `17`
 - Maven
-- Node.js `20.19+` 或 `22.12+`
+- Node.js `20.19+`、`22.12+` 或 `24+`
 - Docker / Docker Compose
 
-### 启动基础依赖
+仓库根目录提供 `.java-version` 和 `.nvmrc`。使用 jenv/asdf 的环境可以按 `.java-version`
+切到 Java 17；使用 nvm 的环境可以执行 `nvm use` 切到推荐 Node 版本。
+
+### 准备环境变量
+
+```bash
+cp .env.example .env
+```
+
+`.env` 是本地私有配置文件，可能包含真实密钥，必须保持未跟踪状态。不要提交、截图或粘贴 `.env` 内容。
+
+### 推荐：宿主机开发模式
+
+这个模式最适合日常开发：PostgreSQL / Redis 用 Docker，后端和两个前端在本机运行，支持热更新。
+
+#### 1. 启动基础依赖
 
 ```bash
 docker compose up -d postgres redis
 ```
 
-### 启动后端
+#### 2. 启动后端
+
+后端本机运行时不会自动读取根目录 `.env`，需要先导入环境变量：
 
 ```bash
+set -a
+source .env
+set +a
 cd vocata-server
 mvn spring-boot:run
 ```
 
-### 启动用户端
+如果本机 Maven 仓库不可写，使用项目验证时常用的临时仓库：
+
+```bash
+cd vocata-server
+mvn -Dmaven.repo.local=/tmp/juhao_m2repo spring-boot:run
+```
+
+#### 3. 启动用户端
 
 ```bash
 cd vocata-web
@@ -159,13 +197,35 @@ npm install
 npm run dev
 ```
 
-### 启动管理后台
+#### 4. 启动管理后台
 
 ```bash
 cd vocata-admin
 npm install
 npm run dev
 ```
+
+访问地址：
+
+- 用户端：`http://localhost:3000`
+- 管理后台：`http://localhost:3001`
+- 后端健康检查：`http://localhost:9009/api/health`
+
+### 可选：全量 Docker 模式
+
+这个模式用于检查容器构建和近似发布态静态前端，不提供前端热更新：
+
+```bash
+docker compose up -d --build
+```
+
+全量 Docker 模式会使用 `.env` 中的 `DOCKER_DB_HOST`、`DOCKER_DB_PORT`、`DOCKER_REDIS_HOST`、`DOCKER_REDIS_PORT` 连接 compose 内部服务。
+
+### 数据库说明
+
+当前仓库还没有正式的 schema migration 体系。新建空库后，服务可能能启动，但业务接口会因为缺少表结构或种子数据失败。现阶段请使用已有开发库/备份恢复；后续应补 Flyway/Liquibase 或独立 SQL 初始化脚本。
+
+如果需要为后续 migration baseline 准备可信 schema，可以先运行 `./scripts/export-schema.sh`，它只导出 schema-only DDL，不会导出业务数据。
 
 ## 常用命令
 
@@ -174,6 +234,7 @@ npm run dev
 ```bash
 cd vocata-server
 mvn spring-boot:run
+mvn -Dmaven.repo.local=/tmp/juhao_m2repo spring-boot:run
 mvn test
 mvn clean package -DskipTests
 ```
@@ -187,6 +248,7 @@ npm run lint
 npm run type-check
 npm run test
 npm run build
+npm run check
 ```
 
 ### 管理后台
@@ -197,34 +259,82 @@ npm run dev
 npm run lint
 npm run type-check
 npm run build
+npm run check
 ```
 
 ### 本地验证
 
 ```bash
+./scripts/doctor.sh
+./scripts/doctor.sh --json
 ./scripts/check.sh
+./scripts/pre-pr-check.sh
+./scripts/report-frontend-assets.sh
+./scripts/validate-docs.sh
 ./scripts/validate-backend.sh
 ./scripts/validate-web.sh
 ./scripts/validate-admin.sh
 ./scripts/validate-docker.sh
 ```
 
-说明：`./scripts/check.sh` 是根目录一键质量检查入口，会依次运行空白检查、后端验证、用户端验证和管理端验证。Docker 编排检查仍保留为单独命令，因为它依赖本机 Docker 环境。
+说明：`./scripts/doctor.sh` 用于只读检查本机开发环境，支持 `./scripts/doctor.sh --json` 输出机器可读摘要，但不会打印环境变量值。`./scripts/check.sh` 是根目录一键质量检查入口，会依次运行文档/模板/元数据检查、后端验证、用户端验证和管理端验证。`./scripts/pre-pr-check.sh` 会根据当前变更范围提示 PR 前应运行哪些验证；`./scripts/report-frontend-assets.sh` 用于查看已有前端 production build asset 体积，支持 `--json` 机器可读输出，不会自动构建，也不是失败门禁。Docker 编排检查仍保留为单独命令，因为它依赖本机 Docker 环境。
 
 ## 开发规范
 
 - AI 协作指南：[`AGENTS.md`](AGENTS.md)
 - 贡献流程：[`CONTRIBUTING.md`](CONTRIBUTING.md)
 - 代码风格：[`CODE_STYLE.md`](CODE_STYLE.md)
+- AI 协作流程：[`docs/AI协作流程.md`](docs/AI协作流程.md)
+- AI 任务模板：[`docs/AI任务模板.md`](docs/AI任务模板.md)
+- AI 审查清单：[`docs/AI审查清单.md`](docs/AI审查清单.md)
+- 架构决策记录：[`docs/adr/README.md`](docs/adr/README.md)
+- 版本发布策略：[`docs/版本发布策略.md`](docs/版本发布策略.md)
 - 开发工作流：[`docs/开发工作流.md`](docs/开发工作流.md)
 - 提交规范：[`docs/提交规范.md`](docs/提交规范.md)
 - 验证清单：[`docs/验证清单.md`](docs/验证清单.md)
 - 测试策略：[`docs/测试策略.md`](docs/测试策略.md)
+- 技术债与后续工作：[`docs/技术债与后续工作.md`](docs/技术债与后续工作.md)
+- AI 核心链路测试夹具方案：[`docs/AI核心链路测试夹具方案.md`](docs/AI核心链路测试夹具方案.md)
+
+## 开源协作
+
+- License：[`LICENSE`](LICENSE)
+- 安全策略：[`SECURITY.md`](SECURITY.md)
+- 支持说明：[`SUPPORT.md`](SUPPORT.md)
+- 维护者说明：[`MAINTAINERS.md`](MAINTAINERS.md)
+- 行为准则：[`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md)
+- 变更记录：[`CHANGELOG.md`](CHANGELOG.md)
+- 版本发布策略：[`docs/版本发布策略.md`](docs/版本发布策略.md)
+- 维护与分流指南：[`docs/维护与分流指南.md`](docs/维护与分流指南.md)
+- 开源成熟度路线图：[`docs/开源成熟度路线图.md`](docs/开源成熟度路线图.md)
+- 开源成熟度审计：[`docs/开源成熟度审计.md`](docs/开源成熟度审计.md)
+- 技术债与后续工作：[`docs/技术债与后续工作.md`](docs/技术债与后续工作.md)
+- 数据库迁移基线方案：[`docs/数据库迁移基线方案.md`](docs/数据库迁移基线方案.md)
+- 依赖与安全自动化方案：[`docs/依赖与安全自动化方案.md`](docs/依赖与安全自动化方案.md)
+- 发布流程硬化方案：[`docs/发布流程硬化方案.md`](docs/发布流程硬化方案.md)
+- AI 核心链路测试夹具方案：[`docs/AI核心链路测试夹具方案.md`](docs/AI核心链路测试夹具方案.md)
+- PR 模板：[`.github/pull_request_template.md`](.github/pull_request_template.md)
+- Issue 模板：[`.github/ISSUE_TEMPLATE/`](.github/ISSUE_TEMPLATE/)
+- Git 文本规范：[`.gitattributes`](.gitattributes)
 
 ## 相关文档
 
 - 开发环境说明：[`docs/开发环境说明.md`](docs/开发环境说明.md)
 - Docker 开发环境：[`docs/Docker开发环境.md`](docs/Docker开发环境.md)
+- AI 协作流程：[`docs/AI协作流程.md`](docs/AI协作流程.md)
+- AI 任务模板：[`docs/AI任务模板.md`](docs/AI任务模板.md)
+- AI 审查清单：[`docs/AI审查清单.md`](docs/AI审查清单.md)
+- 架构决策记录：[`docs/adr/README.md`](docs/adr/README.md)
+- 开源成熟度路线图：[`docs/开源成熟度路线图.md`](docs/开源成熟度路线图.md)
+- 发布检查清单：[`docs/发布检查清单.md`](docs/发布检查清单.md)
+- 版本发布策略：[`docs/版本发布策略.md`](docs/版本发布策略.md)
+- 维护与分流指南：[`docs/维护与分流指南.md`](docs/维护与分流指南.md)
+- 开源成熟度审计：[`docs/开源成熟度审计.md`](docs/开源成熟度审计.md)
+- 技术债与后续工作：[`docs/技术债与后续工作.md`](docs/技术债与后续工作.md)
+- 数据库迁移基线方案：[`docs/数据库迁移基线方案.md`](docs/数据库迁移基线方案.md)
+- 依赖与安全自动化方案：[`docs/依赖与安全自动化方案.md`](docs/依赖与安全自动化方案.md)
+- 发布流程硬化方案：[`docs/发布流程硬化方案.md`](docs/发布流程硬化方案.md)
+- AI 核心链路测试夹具方案：[`docs/AI核心链路测试夹具方案.md`](docs/AI核心链路测试夹具方案.md)
 - 部署环境说明：[`docs/部署环境说明.md`](docs/部署环境说明.md)
 - 验证清单：[`docs/验证清单.md`](docs/验证清单.md)
 - 测试策略：[`docs/测试策略.md`](docs/测试策略.md)

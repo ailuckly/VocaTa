@@ -19,6 +19,34 @@ export default defineConfig(({ mode }) => {
         '@': fileURLToPath(new URL('./src', import.meta.url))
       },
     },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (!id.includes('node_modules')) {
+              return undefined
+            }
+            if (id.includes('@element-plus/icons-vue')) {
+              return 'element-plus-icons'
+            }
+            const elementPlusComponent = id.match(/node_modules\/element-plus\/(?:es|lib)\/components\/([^/]+)/)
+            if (elementPlusComponent) {
+              return `element-plus-${elementPlusComponent[1]}`
+            }
+            if (id.includes('node_modules/element-plus')) {
+              return 'element-plus-core'
+            }
+            if (id.includes('vue-router')) {
+              return 'vue-router'
+            }
+            if (id.includes('pinia')) {
+              return 'pinia'
+            }
+            return 'vendor'
+          },
+        },
+      },
+    },
     server: {
       port: 3000,
       host: '0.0.0.0', // 允许外部访问
