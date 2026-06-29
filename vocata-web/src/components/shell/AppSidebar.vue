@@ -118,11 +118,9 @@ import { isMobile } from '@/utils/isMobile'
 import { removeToken } from '@/utils/token'
 import { onAvatarError } from '@/utils/avatar'
 import {
-  ArrowUp,
   Close,
   Compass,
   EditPen,
-  Histogram,
   Setting,
   Star,
   SwitchButton,

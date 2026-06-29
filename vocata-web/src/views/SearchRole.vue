@@ -98,10 +98,9 @@ import {
   CREATORS,
   HOT_TAGS,
   TOPICS,
-  roleToCard,
-  formatHeat
+  roleToCard
 } from '@/components/home/homeData'
-import type { FeaturedCardData, HomeRoleCardData } from '@/components/home/homeData'
+import type { FeaturedCardData } from '@/components/home/homeData'
 import { chatHistoryStore } from '@/store'
 import type { roleInfo } from '@/types/common'
 import { ElMessage } from 'element-plus'
