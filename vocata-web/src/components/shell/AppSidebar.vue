@@ -51,7 +51,7 @@
             </button>
 
             <!-- 操作菜单 (悬浮显示) -->
-            <el-dropdown class="app-sidebar__history-actions" trigger="click" @command="(cmd) => handleHistoryCommand(cmd as string, item.conversationUuid)">
+            <el-dropdown class="app-sidebar__history-actions" trigger="click" @command="handleHistoryCommand($event as string, item.conversationUuid)">
               <button class="history-action-btn" @click.stop><el-icon><MoreFilled /></el-icon></button>
               <template #dropdown>
                 <el-dropdown-menu>

@@ -147,9 +147,10 @@ const publicRoleCards = computed(() => roleList.value.map(roleToCard))
 
 const roleToFeaturedCard = (role: roleInfo): FeaturedCardData => ({
   id: role.id,
-  title: role.name || '未命名角色',
-  desc: role.description || role.greeting || '精彩设定不容错过',
-  image: role.avatarUrl || '/avatars/storydice.png'
+  name: role.name || '未命名角色',
+  tags: [role.description || role.greeting || '精彩设定不容错过'],
+  count: String(role.chatCount || 0),
+  cover: role.avatarUrl || '/avatars/storydice.png'
 })
 
 const featuredCardItems = computed(() => featuredRoles.value.map(roleToFeaturedCard))
