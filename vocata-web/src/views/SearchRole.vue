@@ -18,7 +18,7 @@
             <el-icon><Bell /></el-icon>
           </button>
           <button type="button" class="home-topbar__avatar" aria-label="用户中心">
-            <img src="/avatars/alice.png" alt="" />
+            <img :src="'/avatars/alice.png'" alt="" />
           </button>
         </div>
       </header>

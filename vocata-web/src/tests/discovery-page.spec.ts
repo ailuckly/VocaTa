@@ -28,6 +28,8 @@ vi.mock('@/api/modules/role', () => ({
 
 vi.mock('@/store', () => ({
   chatHistoryStore: () => ({
+    chatHistory: [],
+    getChatHistory: vi.fn().mockResolvedValue(undefined),
     addChatHistory,
   }),
 }))
@@ -134,7 +136,7 @@ describe('SearchRole commercial home', () => {
       tags: undefined,
     })
     expect(wrapper.text()).toContain('哈利·波特')
-    expect(wrapper.text()).toContain('立即聊天')
+    expect(wrapper.text()).toContain('立即体验')
     expect(wrapper.text()).toContain('恋爱陪伴')
     expect(wrapper.text()).toContain('二次元')
     expect(wrapper.text()).toContain('深夜树洞')

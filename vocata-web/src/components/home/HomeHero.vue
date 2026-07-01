@@ -21,7 +21,7 @@
         <div class="hero-content__left">
           <h1>{{ role.name || '未命名角色' }}</h1>
           <p>{{ description }}</p>
-          <button class="btn-chat" @click="$emit('chat', role.id)">立即体验</button>
+          <button class="btn-chat" data-test="hero-chat" @click="$emit('chat', role.id)">立即体验</button>
           
           <div class="hero-thumbnails">
             <button class="nav-arrow" @click="prevRole">&lt;</button>
