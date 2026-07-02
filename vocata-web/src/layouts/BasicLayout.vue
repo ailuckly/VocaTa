@@ -1,5 +1,5 @@
 <template>
-  <div class="app-layout" :class="{ 'is-mobile': isMobileDevice, 'is-chat-route': isChatRoute }">
+  <div class="app-layout" :class="{ 'is-mobile': isMobileDevice, 'is-chat-route': isChatRoute, 'sidebar-collapsed': isSidebarCollapsed && !isMobileDevice }">
     <!-- 移动端遮罩 -->
     <div
       v-if="isMobileDevice && !isSidebarCollapsed"
@@ -29,7 +29,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import AppSidebar from '@/components/shell/AppSidebar.vue'
 import { isMobile } from '@/utils/isMobile'
@@ -37,9 +37,15 @@ import { isMobile } from '@/utils/isMobile'
 const isSidebarCollapsed = ref(false)
 const route = useRoute()
 const isMobileDevice = isMobile()
-const isChatRoute = route.path.startsWith('/chat/')
+const isChatRoute = computed(() => route.path.startsWith('/chat/'))
 
 onMounted(() => {
+  if (isMobileDevice) {
+    isSidebarCollapsed.value = true
+  }
+})
+
+watch(() => route.path, () => {
   if (isMobileDevice) {
     isSidebarCollapsed.value = true
   }
@@ -53,10 +59,15 @@ const handleToggleSidebar = () => {
 <style lang="scss" scoped>
 .app-layout {
   display: grid;
-  grid-template-columns: 280px minmax(0, 1fr);
+  grid-template-columns: var(--sidebar-width, 260px) minmax(0, 1fr);
+  transition: grid-template-columns 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
   height: 100vh;
   overflow: hidden;
   background: var(--vt-bg);
+}
+
+.app-layout.sidebar-collapsed {
+  --sidebar-width: 76px;
 }
 
 .app-layout__overlay {
